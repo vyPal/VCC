@@ -154,11 +154,19 @@ void parse_function(parser_state *s) {
     return;
   }
   advance(s); // )
-  advance(s); // TODO: Verify `{`
+  if (!(s->current_kind == 4 && *s->src == '{')) {
+    printf("Expected start of function block (`{`), found %.*s\n",
+           s->current_len, s->src);
+    return;
+  }
   while (s->current_kind != 4) {
     parse_statement(s);
   }
-  advance(s); // TODO: Verify `}`
+  if (!(s->current_kind == 4 && *s->src == '}')) {
+    printf("Expected end of function block (`}`), found %.*s\n", s->current_len,
+           s->src);
+    return;
+  }
 }
 
 // Parses a input file into an AST
