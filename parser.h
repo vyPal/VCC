@@ -7,8 +7,7 @@ typedef enum {
   ADD,
   SUB,
   RETURN,
-  IMMEDIATE,
-  IDENTIFIER,
+  LEAF,
 } ast_node_type;
 
 typedef struct {
@@ -45,8 +44,7 @@ typedef struct {
 } ast_node_binary_op;
 
 typedef ast_node *ast_node_return; // Pointer to optional return value
-typedef char *ast_node_immediate;
-typedef char *ast_node_identifier;
+typedef char *ast_node_leaf;
 
 void skip_whitespace(char **text);
 int determine_kind(char *text, int *len);
