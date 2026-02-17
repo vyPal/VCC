@@ -58,9 +58,13 @@ int main(int argc, char **argv) {
     return ret;
   }
 
-  ast_node *nodes = NULL;
-  ret = parse_text("int main(int a, int b){int test = 7;}", &nodes);
+  ast_node **nodes = NULL;
+  ret = parse_text("int main(int a, int b){int test = 7;test = 5;return test;}",
+                   &nodes);
   printf("Parsed %d nodes\n", ret);
+  for (int i = 0; i < ret; i++) {
+    traverse_tree(nodes[i], 0);
+  }
 
   return 0;
 }
