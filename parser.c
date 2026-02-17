@@ -3,10 +3,14 @@
 #include "stdlib.h"
 #include "string.h"
 
-void skip_whitespace(char **text) {
-  while (**text == ' ' || **text == '\t' || **text == '\r' || **text == '\n' ||
-         **text == '\v' || **text == '\f')
+static inline void skip_whitespace(char **text) {
+  while (1) {
+    char c = **text;
+    if (c != ' ' && c != '\n' && c != '\t' && c != '\r' && c != '\v' &&
+        c != '\f')
+      break;
     (*text)++;
+  }
 }
 
 // Reads chars from text until the next token kind is determined

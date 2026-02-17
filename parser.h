@@ -46,7 +46,7 @@ typedef struct {
 typedef ast_node *ast_node_return; // Pointer to optional return value
 typedef char *ast_node_leaf;
 
-void skip_whitespace(char **text);
+static inline void skip_whitespace(char **text);
 int determine_kind(char *text, int *len);
 int parse_text(char *text, ast_node ***nodes);
 
