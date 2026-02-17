@@ -123,16 +123,8 @@ ast_node *parse_operator(parser_state *s) {
       return NULL;
     }
 
-    op->op = calloc(s->current_len + 1, sizeof(char));
-    if (op->op == NULL) {
-      free_node(left);
-      free(op);
-      free(new);
-      printf("Failed to allocate space for operator symbol\n");
-      return NULL;
-    }
-
-    memcpy(op->op, s->src, s->current_len);
+    op->op.ptr = s->src;
+    op->op.len = s->current_len;
     op->left = left;
     advance(s);
     op->right = parse_primary(s);
@@ -173,17 +165,10 @@ ast_node *parse_statement(parser_state *s) {
       printf("Failed to allocate space for node value\n");
       return NULL;
     }
-    assign->name = calloc(s->current_len + 1, sizeof(char));
-    if (assign->name == NULL) {
-      free(assign);
-      free(node);
-      printf("Failed to allocate space for assignment variable name\n");
-      return NULL;
-    }
-    memcpy(assign->name, s->src, s->current_len);
+    assign->name.ptr = s->src;
+    assign->name.len = s->current_len;
     advance(s); // name
     if (!(s->current_kind == 4 && *s->src == '=')) {
-      free(assign->name);
       free(assign);
       free(node);
       printf("Expected assignment (`=`), found %.*s\n", s->current_len, s->src);
@@ -204,28 +189,14 @@ ast_node *parse_statement(parser_state *s) {
       printf("Failed to allocate space for node value\n");
       return NULL;
     }
-    variable->name = calloc(next_len + 1, sizeof(char));
-    if (variable->name == NULL) {
-      free(variable);
-      free(node);
-      printf("Failed to allocate space for variablement variable name\n");
-      return NULL;
-    }
-    memcpy(variable->name, next_start, next_len);
-    variable->type = calloc(s->current_len + 1, sizeof(char));
-    if (variable->type == NULL) {
-      free(variable->name);
-      free(variable);
-      free(node);
-      printf("Failed to allocate space for variablement variable name\n");
-      return NULL;
-    }
-    memcpy(variable->type, s->src, s->current_len);
+    variable->name.ptr = next_start;
+    variable->name.len = next_len;
+
+    variable->type.ptr = s->src;
+    variable->type.len = s->current_len;
     advance(s); // type
     advance(s); // name
     if (!(s->current_kind == 4 && *s->src == '=')) {
-      free(variable->name);
-      free(variable->type);
       free(variable);
       free(node);
       printf("Expected assignment (`=`), found %.*s\n", s->current_len, s->src);
@@ -267,30 +238,15 @@ ast_node *parse_function(parser_state *s) {
   char *next_start;
   int next_type = peek(s, &next_len, &next_start);
 
-  func->name = calloc(next_len + 1, sizeof(char));
-  if (func->name == NULL) {
-    free(func);
-    free(node);
-    printf("Failed to allocate space for function name\n");
-    return NULL;
-  }
-  memcpy(func->name, next_start, next_len);
+  func->name.ptr = next_start;
+  func->name.len = next_len;
 
-  func->ret_type = calloc(s->current_len + 1, sizeof(char));
-  if (func->ret_type == NULL) {
-    free(func->name);
-    free(func);
-    free(node);
-    printf("Failed to allocate space for function name\n");
-    return NULL;
-  }
-  memcpy(func->ret_type, s->src, s->current_len);
+  func->ret_type.ptr = s->src;
+  func->ret_type.len = s->current_len;
 
   advance(s); // type
   advance(s); // name
   if (!(s->current_kind == 4 && *s->src == '(')) {
-    free(func->ret_type);
-    free(func->name);
     free(func);
     free(node);
     printf("Expected start of arguments list (`(`), found %.*s\n",
@@ -306,8 +262,6 @@ ast_node *parse_function(parser_state *s) {
     if (func->argc == 1) {
       func->arg_names = malloc(sizeof(char *));
       if (func->arg_names == NULL) {
-        free(func->ret_type);
-        free(func->name);
         free(func);
         free(node);
         printf("Failed to allocate space for argument list\n");
@@ -316,40 +270,28 @@ ast_node *parse_function(parser_state *s) {
       func->arg_types = malloc(sizeof(char *));
       if (func->arg_names == NULL) {
         free(func->arg_names);
-        free(func->ret_type);
-        free(func->name);
         free(func);
         free(node);
         printf("Failed to allocate space for argument list\n");
         return NULL;
       }
     } else {
-      char **names = realloc(func->arg_names, sizeof(char *) * func->argc);
+      token_slice *names =
+          realloc(func->arg_names, sizeof(token_slice) * func->argc);
       if (names == NULL) {
-        for (int i = 0; i < func->argc - 1; i++) {
-          free(func->arg_names[i]);
-          free(func->arg_types[i]);
-        }
         free(func->arg_names);
         free(func->arg_types);
-        free(func->ret_type);
-        free(func->name);
         free(func);
         free(node);
         printf("Failed to reallocate space for argument list\n");
         return NULL;
       }
       func->arg_names = names;
-      char **types = realloc(func->arg_types, sizeof(char *) * func->argc);
+      token_slice *types =
+          realloc(func->arg_types, sizeof(token_slice) * func->argc);
       if (types == NULL) {
-        for (int i = 0; i < func->argc - 1; i++) {
-          free(func->arg_names[i]);
-          free(func->arg_types[i]);
-        }
         free(func->arg_names);
         free(func->arg_types);
-        free(func->ret_type);
-        free(func->name);
         free(func);
         free(node);
         printf("Failed to reallocate space for argument list\n");
@@ -358,41 +300,10 @@ ast_node *parse_function(parser_state *s) {
       func->arg_types = types;
     }
 
-    func->arg_names[func->argc - 1] = calloc(next_len + 1, sizeof(char));
-    if (func->arg_names[func->argc - 1] == NULL) {
-      for (int i = 0; i < func->argc - 1; i++) {
-        free(func->arg_names[i]);
-        free(func->arg_types[i]);
-      }
-      free(func->arg_names);
-      free(func->arg_types);
-      free(func->ret_type);
-      free(func->name);
-      free(func);
-      free(node);
-      printf("Failed to reallocate space for argument name\n");
-      return NULL;
-    }
-
-    func->arg_types[func->argc - 1] = calloc(s->current_len + 1, sizeof(char));
-    if (func->arg_types[func->argc - 1] == NULL) {
-      free(func->arg_names[func->argc - 1]);
-      for (int i = 0; i < func->argc - 1; i++) {
-        free(func->arg_names[i]);
-        free(func->arg_types[i]);
-      }
-      free(func->arg_names);
-      free(func->arg_types);
-      free(func->ret_type);
-      free(func->name);
-      free(func);
-      free(node);
-      printf("Failed to reallocate space for argument type\n");
-      return NULL;
-    }
-
-    memcpy(func->arg_names[func->argc - 1], next_start, next_len);
-    memcpy(func->arg_types[func->argc - 1], s->src, s->current_len);
+    func->arg_names[func->argc - 1].ptr = next_start;
+    func->arg_names[func->argc - 1].len = next_len;
+    func->arg_types[func->argc - 1].ptr = s->src;
+    func->arg_types[func->argc - 1].len = s->current_len;
 
     advance(s); // type
     advance(s); // name
@@ -402,14 +313,8 @@ ast_node *parse_function(parser_state *s) {
       break;
   }
   if (!(s->current_kind == 4 && *s->src == ')')) {
-    for (int i = 0; i < func->argc; i++) {
-      free(func->arg_names[i]);
-      free(func->arg_types[i]);
-    }
     free(func->arg_names);
     free(func->arg_types);
-    free(func->ret_type);
-    free(func->name);
     free(func);
     free(node);
     printf("Expected end of arguments list (`)`), found %.*s\n", s->current_len,
@@ -418,14 +323,8 @@ ast_node *parse_function(parser_state *s) {
   }
   advance(s); // )
   if (!(s->current_kind == 4 && *s->src == '{')) {
-    for (int i = 0; i < func->argc; i++) {
-      free(func->arg_names[i]);
-      free(func->arg_types[i]);
-    }
     free(func->arg_names);
     free(func->arg_types);
-    free(func->ret_type);
-    free(func->name);
     free(func);
     free(node);
     printf("Expected start of function block (`{`), found %.*s\n",
@@ -438,14 +337,8 @@ ast_node *parse_function(parser_state *s) {
     if (func->nodec == 1) {
       func->nodes = malloc(sizeof(ast_node *));
       if (func->nodes == NULL) {
-        for (int i = 0; i < func->argc; i++) {
-          free(func->arg_names[i]);
-          free(func->arg_types[i]);
-        }
         free(func->arg_names);
         free(func->arg_types);
-        free(func->ret_type);
-        free(func->name);
         free(func);
         free(node);
         printf("Failed to allocate space for function body\n");
@@ -458,14 +351,8 @@ ast_node *parse_function(parser_state *s) {
           free_node(func->nodes[i]);
         }
         free(func->nodes);
-        for (int i = 0; i < func->argc; i++) {
-          free(func->arg_names[i]);
-          free(func->arg_types[i]);
-        }
         free(func->arg_names);
         free(func->arg_types);
-        free(func->ret_type);
-        free(func->name);
         free(func);
         free(node);
         printf("Failed to allocate space for function body\n");
@@ -480,14 +367,8 @@ ast_node *parse_function(parser_state *s) {
       free_node(func->nodes[i]);
     }
     free(func->nodes);
-    for (int i = 0; i < func->argc; i++) {
-      free(func->arg_names[i]);
-      free(func->arg_types[i]);
-    }
     free(func->arg_names);
     free(func->arg_types);
-    free(func->ret_type);
-    free(func->name);
     free(func);
     free(node);
     printf("Expected end of function block (`}`), found %.*s\n", s->current_len,
@@ -546,32 +427,22 @@ void free_node(ast_node *node) {
   switch (node->type) {
   case FUNCTION:;
     ast_node_function *f = (ast_node_function *)node->node;
-    free(f->name);
-    free(f->ret_type);
-    for (int i = 0; i < f->argc; i++) {
-      free(f->arg_names[i]);
-      free(f->arg_types[i]);
-    }
     for (int i = 0; i < f->nodec; i++) {
       free_node(f->nodes[i]);
     }
     break;
   case VARIABLE:;
     ast_node_variable *v = (ast_node_variable *)node->node;
-    free(v->name);
-    free(v->type);
     free_node(v->initializer);
     break;
   case ASSIGNMENT:;
     ast_node_assignment *a = (ast_node_assignment *)node->node;
-    free(a->name);
     free_node(a->value);
     break;
   case BINARY_OP:;
     ast_node_binary_op *b = (ast_node_binary_op *)node->node;
     free_node(b->left);
     free_node(b->right);
-    free(b->op);
     break;
   case RETURN:
     free_node((ast_node *)node->node);
@@ -592,9 +463,11 @@ void traverse_tree(ast_node *node, int level) {
   switch (node->type) {
   case FUNCTION:;
     ast_node_function *f = (ast_node_function *)node->node;
-    printf("Function | name: `%s` return: `%s` args: ", f->name, f->ret_type);
+    printf("Function | name: `%.*s` return: `%.*s` args: ", f->name.len,
+           f->name.ptr, f->ret_type.len, f->ret_type.ptr);
     for (int i = 0; i < f->argc; i++) {
-      printf("`%s %s`", f->arg_types[i], f->arg_names[i]);
+      printf("`%.*s %.*s`", f->arg_types[i].len, f->arg_types[i].ptr,
+             f->arg_names[i].len, f->arg_names[i].ptr);
       if (i != f->argc - 1)
         printf(", ");
     }
@@ -605,7 +478,8 @@ void traverse_tree(ast_node *node, int level) {
     break;
   case VARIABLE:;
     ast_node_variable *v = (ast_node_variable *)node->node;
-    printf("Variable | name: `%s` type: `%s`", v->name, v->type);
+    printf("Variable | name: `%.*s` type: `%.*s`", v->name.len, v->name.ptr,
+           v->type.len, v->type.ptr);
     if (v->initializer != NULL) {
       printf(" | initializer:\n");
       traverse_tree(v->initializer, level + 1);
@@ -613,7 +487,7 @@ void traverse_tree(ast_node *node, int level) {
     break;
   case ASSIGNMENT:;
     ast_node_assignment *a = (ast_node_assignment *)node->node;
-    printf("Assignment | name: `%s` | value:\n", a->name);
+    printf("Assignment | name: `%.*s` | value:\n", a->name.len, a->name.ptr);
     traverse_tree(a->value, level + 1);
     break;
   case BINARY_OP:;
@@ -621,7 +495,7 @@ void traverse_tree(ast_node *node, int level) {
     printf("Binary Op:");
     traverse_tree(b->left, level + 1);
     printf("%*s", level, "");
-    printf("%s\n", b->op);
+    printf("%.*s\n", b->op.len, b->op.ptr);
     traverse_tree(b->right, level + 1);
     break;
   case RETURN:
