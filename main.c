@@ -1,3 +1,4 @@
+#include "compiler.h"
 #include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,10 +97,41 @@ int main(int argc, char **argv) {
   fclose(input);
 
   ast_node **nodes = NULL;
-  ret = parse_text(contents, &nodes);
-  printf("Parsed %d nodes\n", ret);
-  for (int i = 0; i < ret; i++) {
+  int nodec = parse_text(contents, &nodes);
+  printf("Parsed %d nodes\n", nodec);
+  for (int i = 0; i < nodec; i++) {
     traverse_tree(nodes[i], 0);
+  }
+
+  char *out_asm;
+  int len = generate_asm(nodes, nodec, &out_asm);
+  if (len < 0) {
+    printf("Assembly generation failed\n");
+    for (int i = 0; i < nodec; i++) {
+      free_node(nodes[i]);
+    }
+    free(nodes);
+    free(args.inputs);
+    free(contents);
+    return 1;
+  }
+
+  FILE *output = fopen(args.output, "w");
+  if (output == NULL) {
+    printf("Failed to open output file\n");
+    for (int i = 0; i < nodec; i++) {
+      free_node(nodes[i]);
+    }
+    free(nodes);
+    free(args.inputs);
+    free(contents);
+    return 1;
+  }
+
+  fwrite(out_asm, 1, len, output);
+  fclose(output);
+
+  for (int i = 0; i < nodec; i++) {
     free_node(nodes[i]);
   }
   free(nodes);

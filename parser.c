@@ -85,13 +85,15 @@ ast_node *parse_primary(parser_state *s) {
       return NULL;
     }
     node->type = LEAF;
-    node->node = calloc(s->current_len + 1, sizeof(char));
-    if (node == NULL) {
+    token_slice *slice = malloc(sizeof(token_slice));
+    if (slice == NULL) {
       printf("Failed to allocate space for leaf node value\n");
       free(node);
       return NULL;
     }
-    memcpy(node->node, s->src, s->current_len);
+    slice->ptr = s->src;
+    slice->len = s->current_len;
+    node->node = slice;
     advance(s);
     return node;
   } else {
@@ -459,7 +461,7 @@ void free_node(ast_node *node) {
     free_node((ast_node *)node->node);
     break;
   case LEAF:
-    free((char *)node->node);
+    free((token_slice *)node->node);
     break;
   }
   free(node);
@@ -516,8 +518,9 @@ void traverse_tree(ast_node *node, int level) {
       traverse_tree(node->node, level + 1);
     }
     break;
-  case LEAF:
-    printf("Leaf | `%s`\n", (char *)node->node);
+  case LEAF:;
+    token_slice *s = ((token_slice *)node->node);
+    printf("Leaf | `%.*s`\n", s->len, s->ptr);
   }
   if (level == 0)
     printf("\n");
