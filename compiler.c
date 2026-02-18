@@ -77,6 +77,71 @@ int append(compiler_state *state, char *text) {
   return len;
 }
 
+char *to_pretty(ast_node *node) {
+  char *ret;
+  int err;
+  switch (node->type) {
+  case FUNCTION:;
+    ast_node_function *f = (ast_node_function *)node->node;
+    err = asprintf(&ret, "%.*s %.*s();", f->ret_type.len, f->ret_type.ptr,
+                   f->name.len, f->name.ptr);
+    break;
+  case VARIABLE:;
+    ast_node_variable *v = (ast_node_variable *)node->node;
+    if (v->initializer == NULL)
+      err = asprintf(&ret, "%.*s %.*s;", v->type.len, v->type.ptr, v->name.len,
+                     v->name.ptr);
+    else {
+      char *init = to_pretty(v->initializer);
+      if (init == NULL)
+        return NULL;
+
+      err = asprintf(&ret, "%.*s %.*s = %s;", v->type.len, v->type.ptr,
+                     v->name.len, v->name.ptr, init);
+      free(init);
+    }
+    break;
+  case ASSIGNMENT:;
+    ast_node_assignment *a = (ast_node_assignment *)node->node;
+    char *value = to_pretty(a->value);
+    if (value == NULL)
+      return NULL;
+    err = asprintf(&ret, "%.*s = %s;", a->name.len, a->name.ptr, value);
+    free(value);
+    break;
+  case BINARY_OP:;
+    ast_node_binary_op *b = (ast_node_binary_op *)node->node;
+    char *left = to_pretty(b->left);
+    if (left == NULL)
+      return NULL;
+    char *right = to_pretty(b->right);
+    if (right == NULL)
+      return NULL;
+    err = asprintf(&ret, "%s %.*s %s", left, b->op.len, b->op.ptr, right);
+    free(left);
+    free(right);
+    break;
+  case RETURN:;
+    if (node->node == NULL) {
+      err = asprintf(&ret, "return void;");
+    } else {
+      char *ret_value = to_pretty(node->node);
+      if (ret_value == NULL)
+        return NULL;
+      err = asprintf(&ret, "return %s;", ret_value);
+      free(ret_value);
+    }
+    break;
+  case LEAF:;
+    token_slice s = *((token_slice *)node->node);
+    err = asprintf(&ret, "%.*s", s.len, s.ptr);
+    break;
+  }
+  if (err == -1)
+    return NULL;
+  return ret;
+}
+
 int emit_prologue(compiler_state *state) {
   return append(state, "; Program prologue\nsection .text\nglobal "
                        "_start\n_start:\n\tcall main\n\n\tmov rdi, rax ; exit "
@@ -85,37 +150,73 @@ int emit_prologue(compiler_state *state) {
 
 int emit_leaf(compiler_state *state, ast_node_leaf leaf) {
   variable *var = find_variable(state, leaf);
+  char buf[128]; // TODO: Should be dynamic
+
   if (var == NULL) { // FIXME: Very bad way to handle this xD
-    char buf[128];   // TODO: Should be dynamic
     sprintf(buf, "\tmov rax, %.*s\n", leaf.len, leaf.ptr);
     return append(state, buf);
   } else {
-    char buf[128]; // TODO: Should be dynamic
-    sprintf(buf, "\tmov rax, QWORD [rbp-%d]\n", var->offset);
+    ast_node tmp_node;
+    tmp_node.type = LEAF;
+    tmp_node.node = &leaf;
+    char *comment = to_pretty(&tmp_node);
+    if (comment == NULL) {
+      printf("Failed to generate comment\n");
+      return -1;
+    }
+    sprintf(buf, "\tmov rax, QWORD [rbp-%d]\t\t; %s\n", var->offset, comment);
+    free(comment);
     return append(state, buf);
   }
 }
 
 int emit_return(compiler_state *state, ast_node_return ret_node) {
-  if (ret_node == NULL) {
-    int ret = append(state, "nop ; Return void\n");
-    if (ret < 0) {
-      return ret;
-    }
+  ast_node tmp_node;
+  tmp_node.type = RETURN;
+  tmp_node.node = ret_node;
+  char *comment = to_pretty(&tmp_node);
+  if (comment == NULL) {
+    printf("Failed to generate comment\n");
+    return -1;
   }
-  return append(state,
-                "; Function epilogue\n\tmov rsp, rbp\n\tpop rbp\n\tret\n");
+  int ret = append(state, "\t\t\t\t\t; ");
+  if (ret < 0) {
+    free(comment);
+    return ret;
+  }
+  ret = append(state, comment);
+  free(comment);
+  if (ret < 0)
+    return ret;
+  if (ret_node == NULL) {
+    int ret = append(state, "\nnop\n");
+    if (ret < 0)
+      return ret;
+  }
+  return append(state, "\n\tmov rsp, rbp\n\tpop rbp\n\tret\n");
 }
 
 int emit_function_prologue(compiler_state *state, ast_node_function *func) {
   char buf[128]; // TODO: Should be dynamic
-  sprintf(buf, "; Function prologue\n%.*s:\n\tpush rbp\n\tmov rbp, rsp\n",
-          func->name.len, func->name.ptr);
+  ast_node tmp_node;
+  tmp_node.type = FUNCTION;
+  tmp_node.node = func;
+  char *comment = to_pretty(&tmp_node);
+  if (comment == NULL) {
+    printf("Failed to generate comment\n");
+    return -1;
+  }
+  sprintf(buf,
+          "; Function prologue\n%.*s:\t\t\t\t\t; %s\n\tpush rbp\n\tmov rbp, "
+          "rsp\n\n",
+          func->name.len, func->name.ptr, comment);
+  free(comment);
   return append(state, buf);
 }
 
 int generate_node(compiler_state *state, ast_node *node) {
   int ret;
+  char *comment;
   switch (node->type) {
   case FUNCTION:;
     ast_node_function *f = (ast_node_function *)node->node;
@@ -145,6 +246,9 @@ int generate_node(compiler_state *state, ast_node *node) {
       return offset;
     }
 
+    comment = to_pretty(node);
+    if (comment == NULL)
+      return -1;
     if (v->initializer != NULL) {
       ret = generate_node(state, v->initializer);
       if (ret < 0) {
@@ -152,7 +256,15 @@ int generate_node(compiler_state *state, ast_node *node) {
         return ret;
       }
       char buf[128];
-      sprintf(buf, "\tmov QWORD [rbp-%d], rax\n", offset);
+      sprintf(buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n", offset, comment);
+      free(comment);
+      ret = append(state, buf);
+      if (ret < 0)
+        return ret;
+    } else {
+      char buf[128];
+      sprintf(buf, "\t\t\t\t; %s\n", comment);
+      free(comment);
       ret = append(state, buf);
       if (ret < 0)
         return ret;
@@ -167,14 +279,21 @@ int generate_node(compiler_state *state, ast_node *node) {
     }
 
     ret = generate_node(state, a->value);
+    comment = to_pretty(node);
+    if (comment == NULL)
+      return -1;
     char buf[128];
-    sprintf(buf, "\tmov QWORD [rbp-%d], rax\n", var->offset);
+    sprintf(buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n", var->offset, comment);
+    free(comment);
     ret = append(state, buf);
     if (ret < 0)
       return ret;
     break;
   case BINARY_OP:;
     ast_node_binary_op *b = (ast_node_binary_op *)node->node;
+    comment = to_pretty(node);
+    if (comment == NULL)
+      return -1;
     ret = generate_node(state, b->right);
     if (ret < 0)
       return ret;
@@ -186,17 +305,24 @@ int generate_node(compiler_state *state, ast_node *node) {
       return ret;
 
     if (strncmp("+", b->op.ptr, b->op.len) == 0) {
-      ret = append(state, "\tadd rax, rdi\n");
+      ret = append(state, "\tadd rax, rdi\t\t\t; ");
       if (ret < 0)
         return ret;
     } else if (strncmp("-", b->op.ptr, b->op.len) == 0) {
-      ret = append(state, "\tsub rax, rdi\n");
+      ret = append(state, "\tsub rax, rdi\t\t\t; ");
       if (ret < 0)
         return ret;
     } else {
       printf("Unknown operator\n");
       return -1;
     }
+    ret = append(state, comment);
+    free(comment);
+    if (ret < 0)
+      return ret;
+    ret = append(state, "\n");
+    if (ret < 0)
+      return ret;
     break;
   case RETURN:;
     if (node->node != NULL) {
@@ -216,6 +342,7 @@ int generate_node(compiler_state *state, ast_node *node) {
     ret = emit_leaf(state, *((ast_node_leaf *)node->node));
     if (ret < 0)
       return ret;
+    break;
   }
   return 0;
 }
