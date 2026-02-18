@@ -1,4 +1,5 @@
 #ifndef PARSER_H
+#define PARSER_H
 
 typedef struct {
   const char *ptr;
