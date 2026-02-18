@@ -28,7 +28,7 @@ int parse_args(args *args, int argc, char **argv) {
       args->output = argv[index];
     } else {
       if (args->inputs == NULL) {
-        args->inputs = malloc(sizeof(char *));
+        args->inputs = malloc(sizeof(char *) * ++args->input_count);
         if (args->inputs == NULL) {
           printf("Failed to allocate space for input array\n");
           return -1;
@@ -52,8 +52,8 @@ int parse_args(args *args, int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-  args a;
-  int ret = parse_args(&a, argc++, argv++);
+  args a = {0};
+  int ret = parse_args(&a, --argc, argv++);
   if (ret < 0) {
     return ret;
   }
@@ -64,7 +64,9 @@ int main(int argc, char **argv) {
   printf("Parsed %d nodes\n", ret);
   for (int i = 0; i < ret; i++) {
     traverse_tree(nodes[i], 0);
+    free_node(nodes[i]);
   }
+  free(nodes);
 
   return 0;
 }

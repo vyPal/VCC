@@ -260,14 +260,14 @@ ast_node *parse_function(parser_state *s) {
 
     func->argc++;
     if (func->argc == 1) {
-      func->arg_names = malloc(sizeof(char *));
+      func->arg_names = malloc(sizeof(token_slice));
       if (func->arg_names == NULL) {
         free(func);
         free(node);
         printf("Failed to allocate space for argument list\n");
         return NULL;
       }
-      func->arg_types = malloc(sizeof(char *));
+      func->arg_types = malloc(sizeof(token_slice));
       if (func->arg_names == NULL) {
         free(func->arg_names);
         free(func);
@@ -332,6 +332,7 @@ ast_node *parse_function(parser_state *s) {
     return NULL;
   }
   advance(s); // {
+  func->nodec = 0;
   while (s->current_kind != 4) {
     func->nodec++;
     if (func->nodec == 1) {
@@ -430,19 +431,26 @@ void free_node(ast_node *node) {
     for (int i = 0; i < f->nodec; i++) {
       free_node(f->nodes[i]);
     }
+    free(f->nodes);
+    free(f->arg_names);
+    free(f->arg_types);
+    free(f);
     break;
   case VARIABLE:;
     ast_node_variable *v = (ast_node_variable *)node->node;
     free_node(v->initializer);
+    free(v);
     break;
   case ASSIGNMENT:;
     ast_node_assignment *a = (ast_node_assignment *)node->node;
     free_node(a->value);
+    free(a);
     break;
   case BINARY_OP:;
     ast_node_binary_op *b = (ast_node_binary_op *)node->node;
     free_node(b->left);
     free_node(b->right);
+    free(b);
     break;
   case RETURN:
     free_node((ast_node *)node->node);
