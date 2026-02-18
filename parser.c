@@ -132,6 +132,7 @@ ast_node *parse_operator(parser_state *s) {
       free_node(new);
       return NULL;
     }
+    new->node = op;
     left = new;
   }
 
@@ -500,9 +501,9 @@ void traverse_tree(ast_node *node, int level) {
     break;
   case BINARY_OP:;
     ast_node_binary_op *b = (ast_node_binary_op *)node->node;
-    printf("Binary Op:");
+    printf("Binary Op:\n");
     traverse_tree(b->left, level + 1);
-    printf("%*s", level, "");
+    printf("%*s", level * 2, "");
     printf("%.*s\n", b->op.len, b->op.ptr);
     traverse_tree(b->right, level + 1);
     break;
