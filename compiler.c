@@ -43,6 +43,7 @@ int create_variable(compiler_state *state, token_slice name) {
       printf("Failed to reallocate space for variables\n");
       return -1;
     }
+    state->variables = new;
   }
   state->variables[state->variable_count].name = name;
   state->variables[state->variable_count].offset = state->current_stack_offset;
@@ -167,7 +168,7 @@ int generate_node(compiler_state *state, ast_node *node) {
 
     ret = generate_node(state, a->value);
     char buf[128];
-    sprintf(buf, "\tmov QWORD [rbp-%d], rax\n", offset);
+    sprintf(buf, "\tmov QWORD [rbp-%d], rax\n", var->offset);
     ret = append(state, buf);
     if (ret < 0)
       return ret;
@@ -224,15 +225,20 @@ int generate_asm(ast_node **source, int nodec, char **output) {
   int ret = emit_prologue(&state);
   if (ret < 0) {
     printf("Failed to emit program epilogue\n");
+    free(state.generated);
     return ret;
   }
 
   for (int i = 0; i < nodec; i++) {
     ret = generate_node(&state, source[i]);
-    if (ret < 0)
+    if (ret < 0) {
+      free(state.generated);
+      free(state.variables);
       return ret;
+    }
   }
 
   *output = state.generated;
+  free(state.variables);
   return state.output_len;
 }

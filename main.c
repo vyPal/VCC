@@ -131,6 +131,8 @@ int main(int argc, char **argv) {
   fwrite(out_asm, 1, len, output);
   fclose(output);
 
+  free(out_asm);
+
   for (int i = 0; i < nodec; i++) {
     free_node(nodes[i]);
   }
