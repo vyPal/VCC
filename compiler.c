@@ -312,6 +312,18 @@ int generate_node(compiler_state *state, ast_node *node) {
       ret = append(state, "\tsub rax, rdi\t\t\t; ");
       if (ret < 0)
         return ret;
+    } else if (strncmp("*", b->op.ptr, b->op.len) == 0) {
+      ret = append(state, "\tmul rax, rdi\t\t\t; ");
+      if (ret < 0)
+        return ret;
+    } else if (strncmp("/", b->op.ptr, b->op.len) == 0) {
+      ret = append(state, "\tcqo\n\tidiv rdi\t\t\t; ");
+      if (ret < 0)
+        return ret;
+    } else if (strncmp("%", b->op.ptr, b->op.len) == 0) {
+      ret = append(state, "\tcqo\n\tidiv rdi\n\tmov rax, rdx\t\t\t; ");
+      if (ret < 0)
+        return ret;
     } else {
       printf("Unknown operator\n");
       return -1;

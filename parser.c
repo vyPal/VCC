@@ -46,7 +46,7 @@ int determine_kind(char *text, int *len) {
     while (*(++text) >= '0' && *text <= '9')
       (*len)++;
     return 2;
-  } else if (*text == '+') {
+  } else if (*text == '+' || *text == '*' || *text == '/' || *text == '%') {
     (*len)++;
     return 3;
 
