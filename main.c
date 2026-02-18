@@ -51,22 +51,60 @@ int parse_args(args *args, int argc, char **argv) {
   return 0;
 }
 
+// Initializes uninitialized values in args struct
+void set_defaults(args *args) {
+  if (args->output == NULL) {
+    args->output = "out.s";
+  }
+}
+
 int main(int argc, char **argv) {
-  args a = {0};
-  int ret = parse_args(&a, --argc, argv++);
+  args args = {0};
+  int ret = parse_args(&args, --argc, ++argv);
   if (ret < 0) {
     return ret;
   }
+  set_defaults(&args);
+
+  if (args.input_count == 0) {
+    printf("Must supply at least one input file\n");
+    return 1;
+  } else if (args.input_count > 1) {
+    printf("This compiler currently doesn't have support for more than one "
+           "input file\n");
+    return 1;
+  }
+
+  FILE *input = fopen(args.inputs[0], "r");
+  if (input == NULL) {
+    printf("Failed to open input file\n");
+    free(args.inputs);
+    return 1;
+  }
+
+  fseek(input, 0, SEEK_END);
+  long length = ftell(input);
+  fseek(input, 0, SEEK_SET);
+  char *contents = malloc(sizeof(char) * length + 1);
+  if (contents == NULL) {
+    printf("Failed to allocate memory for file contents\n");
+    free(args.inputs);
+    return 1;
+  }
+  fread(contents, 1, length, input);
+  contents[length - 1] = 0;
+  fclose(input);
 
   ast_node **nodes = NULL;
-  ret = parse_text("int main(int a, int b){int test = 7;test = 5;return test;}",
-                   &nodes);
+  ret = parse_text(contents, &nodes);
   printf("Parsed %d nodes\n", ret);
   for (int i = 0; i < ret; i++) {
     traverse_tree(nodes[i], 0);
     free_node(nodes[i]);
   }
   free(nodes);
+  free(args.inputs);
+  free(contents);
 
   return 0;
 }

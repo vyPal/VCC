@@ -433,8 +433,10 @@ void free_node(ast_node *node) {
       free_node(f->nodes[i]);
     }
     free(f->nodes);
-    free(f->arg_names);
-    free(f->arg_types);
+    if (f->argc > 0) {
+      free(f->arg_names);
+      free(f->arg_types);
+    }
     free(f);
     break;
   case VARIABLE:;
