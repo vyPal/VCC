@@ -4,10 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+const char *VERSION = "0.0.1";
+
 typedef struct {
   int input_count;
   char **inputs;
   char *output;
+  struct {
+    unsigned int help : 1;
+    unsigned int print_ast : 1;
+  } flags;
 } args;
 
 /*
@@ -27,6 +33,10 @@ int parse_args(args *args, int argc, char **argv) {
         return -1;
       }
       args->output = argv[index];
+    } else if (strncmp("-h", argv[index], 2) == 0) {
+      args->flags.help = 1;
+    } else if (strncmp("-a", argv[index], 2) == 0) {
+      args->flags.print_ast = 1;
     } else {
       if (args->inputs == NULL) {
         args->inputs = malloc(sizeof(char *) * ++args->input_count);
@@ -59,13 +69,30 @@ void set_defaults(args *args) {
   }
 }
 
+void print_help(char *cmd) {
+  printf("VCC v%s - vyPal's C Compiler\n\n", VERSION);
+  printf("A basic compiler for a small subset of the C language, written by "
+         "Jakub Palacký (vyPal)\n\n");
+  printf("Usage: %s (options) <source files...>\n\n", cmd);
+  printf("Available options:\n");
+  printf("\t-h\t\tShows this help menu\n");
+  printf("\t-o <file>\tSpecifies the output file name (default: 'out.s')\n");
+  printf("\t-a\t\tPrint AST after parsing\n");
+}
+
 int main(int argc, char **argv) {
+  char *cmd = argv[0];
   args args = {0};
   int ret = parse_args(&args, --argc, ++argv);
   if (ret < 0) {
     return ret;
   }
   set_defaults(&args);
+
+  if (args.flags.help) {
+    print_help(cmd);
+    return 0;
+  }
 
   if (args.input_count == 0) {
     printf("Must supply at least one input file\n");
@@ -98,6 +125,9 @@ int main(int argc, char **argv) {
 
   ast_node **nodes = NULL;
   int nodec = parse_text(contents, &nodes);
+  if (args.flags.print_ast)
+    for (int i = 0; i < nodec; i++)
+      traverse_tree(nodes[i], 0);
 
   char *out_asm;
   int len = generate_asm(nodes, nodec, &out_asm);
