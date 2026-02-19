@@ -185,7 +185,7 @@ int emit_return(compiler_state *state, ast_node_return ret_node) {
     printf("Failed to generate comment\n");
     return -1;
   }
-  int ret = append(state, "\t\t\t\t\t; ");
+  int ret = append(state, "\n; ");
   if (ret < 0) {
     free(comment);
     return ret;
@@ -267,7 +267,7 @@ int generate_node(compiler_state *state, ast_node *node) {
         printf("Failed to generate variable initializer\n");
         return ret;
       }
-      ret = asprintf(&buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n", offset,
+      ret = asprintf(&buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n\n", offset,
                      comment);
       free(comment);
       if (ret == -1)
@@ -299,7 +299,7 @@ int generate_node(compiler_state *state, ast_node *node) {
     comment = to_pretty(node);
     if (comment == NULL)
       return -1;
-    ret = asprintf(&buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n", var->offset,
+    ret = asprintf(&buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n\n", var->offset,
                    comment);
     free(comment);
     if (ret == -1)
@@ -352,7 +352,7 @@ int generate_node(compiler_state *state, ast_node *node) {
     free(comment);
     if (ret < 0)
       return ret;
-    ret = append(state, "\n");
+    ret = append(state, "\n\n");
     if (ret < 0)
       return ret;
     break;
