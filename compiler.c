@@ -150,11 +150,12 @@ int emit_prologue(compiler_state *state) {
 
 int emit_leaf(compiler_state *state, ast_node_leaf leaf) {
   variable *var = find_variable(state, leaf);
-  char buf[128]; // TODO: Should be dynamic
-
+  char *buf;
+  int ret;
   if (var == NULL) { // FIXME: Very bad way to handle this xD
-    sprintf(buf, "\tmov rax, %.*s\n", leaf.len, leaf.ptr);
-    return append(state, buf);
+    ret = asprintf(&buf, "\tmov rax, %.*s\n", leaf.len, leaf.ptr);
+    if (ret == -1)
+      return -1;
   } else {
     ast_node tmp_node;
     tmp_node.type = LEAF;
@@ -164,10 +165,15 @@ int emit_leaf(compiler_state *state, ast_node_leaf leaf) {
       printf("Failed to generate comment\n");
       return -1;
     }
-    sprintf(buf, "\tmov rax, QWORD [rbp-%d]\t\t; %s\n", var->offset, comment);
+    ret = asprintf(&buf, "\tmov rax, QWORD [rbp-%d]\t\t; %s\n", var->offset,
+                   comment);
+    if (ret == -1)
+      return -1;
     free(comment);
-    return append(state, buf);
   }
+  ret = append(state, buf);
+  free(buf);
+  return ret;
 }
 
 int emit_return(compiler_state *state, ast_node_return ret_node) {
@@ -197,7 +203,7 @@ int emit_return(compiler_state *state, ast_node_return ret_node) {
 }
 
 int emit_function_prologue(compiler_state *state, ast_node_function *func) {
-  char buf[128]; // TODO: Should be dynamic
+  char *buf;
   ast_node tmp_node;
   tmp_node.type = FUNCTION;
   tmp_node.node = func;
@@ -206,17 +212,23 @@ int emit_function_prologue(compiler_state *state, ast_node_function *func) {
     printf("Failed to generate comment\n");
     return -1;
   }
-  sprintf(buf,
-          "; Function prologue\n%.*s:\t\t\t\t\t; %s\n\tpush rbp\n\tmov rbp, "
-          "rsp\n\n",
-          func->name.len, func->name.ptr, comment);
+  int ret = asprintf(
+      &buf,
+      "; Function prologue\n%.*s:\t\t\t\t\t; %s\n\tpush rbp\n\tmov rbp, "
+      "rsp\n\n",
+      func->name.len, func->name.ptr, comment);
   free(comment);
-  return append(state, buf);
+  if (ret == -1)
+    return -1;
+  ret = append(state, buf);
+  free(buf);
+  return ret;
 }
 
 int generate_node(compiler_state *state, ast_node *node) {
   int ret;
   char *comment;
+  char *buf;
   switch (node->type) {
   case FUNCTION:;
     ast_node_function *f = (ast_node_function *)node->node;
@@ -255,17 +267,22 @@ int generate_node(compiler_state *state, ast_node *node) {
         printf("Failed to generate variable initializer\n");
         return ret;
       }
-      char buf[128];
-      sprintf(buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n", offset, comment);
+      ret = asprintf(&buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n", offset,
+                     comment);
       free(comment);
+      if (ret == -1)
+        return ret;
       ret = append(state, buf);
+      free(buf);
       if (ret < 0)
         return ret;
     } else {
-      char buf[128];
-      sprintf(buf, "\t\t\t\t; %s\n", comment);
+      ret = asprintf(&buf, "\t\t\t\t; %s\n", comment);
       free(comment);
+      if (ret == -1)
+        return ret;
       ret = append(state, buf);
+      free(buf);
       if (ret < 0)
         return ret;
     }
@@ -282,10 +299,13 @@ int generate_node(compiler_state *state, ast_node *node) {
     comment = to_pretty(node);
     if (comment == NULL)
       return -1;
-    char buf[128];
-    sprintf(buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n", var->offset, comment);
+    ret = asprintf(&buf, "\tmov QWORD [rbp-%d], rax\t\t; %s\n", var->offset,
+                   comment);
     free(comment);
+    if (ret == -1)
+      return -1;
     ret = append(state, buf);
+    free(buf);
     if (ret < 0)
       return ret;
     break;
