@@ -98,10 +98,6 @@ int main(int argc, char **argv) {
 
   ast_node **nodes = NULL;
   int nodec = parse_text(contents, &nodes);
-  printf("Parsed %d nodes\n", nodec);
-  for (int i = 0; i < nodec; i++) {
-    traverse_tree(nodes[i], 0);
-  }
 
   char *out_asm;
   int len = generate_asm(nodes, nodec, &out_asm);
