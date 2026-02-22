@@ -64,6 +64,9 @@ typedef struct {
   char *src;
   int current_kind;
   int current_len;
+  char *next_start;
+  int next_kind;
+  int next_len;
 } parser_state;
 
 static inline void skip_whitespace(char **text);

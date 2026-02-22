@@ -80,22 +80,16 @@ int create_variable(compiler_state *state, token_slice func_name,
 // Appends null-terminated string to generated assembly
 int append(compiler_state *state, char *text) {
   int len = strlen(text);
-  if (state->output_len == 0) {
-    state->generated = malloc(sizeof(char) * len);
-    if (state->generated == NULL) {
-      printf("Failed to allocate space for generated assembly\n");
-      return -1;
-    }
-  } else {
-    char *new =
-        realloc(state->generated, sizeof(char) * (state->output_len + len));
-    if (new == NULL) {
+
+  char *new =
+      realloc(state->generated, sizeof(char) * (state->output_len + len));
+  if (new == NULL) {
+    if (state->generated != NULL)
       free(state->generated);
-      printf("Failed to reallocate space for generated assembly\n");
-      return -1;
-    }
-    state->generated = new;
+    printf("Failed to reallocate space for generated assembly\n");
+    return -1;
   }
+  state->generated = new;
   memcpy(state->generated + state->output_len, text, len);
   state->output_len += len;
   return len;
