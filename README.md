@@ -19,7 +19,7 @@ To use the compiler, you first need to compile it. I haven't setup and build
 script for that, so I just do it manually:
 
 ```bash
-gcc main.c parser.c compiler.c -o vcc
+gcc main.c parser.c compiler.c utils.c -o vcc
 ```
 
 And that's about it, you can now run the command and provide a input file
