@@ -3,6 +3,13 @@
 This is my attempt at writing a quite basic compiler in C, for a small subset of
 the C language.
 
+## Mirrors
+
+| Host | Details |
+| ---- | ------- |
+| [My personal git server](https://git.vypal.me/FromScratch/Compiler) | Primary server, part of future collection of projects written from scratch |
+| [GitHub](https://github.com/vyPal/VCC) | GitHub mirror - primarily for exposure and to accept Issues/PRs |
+
 ## Plans
 
 My primary goal is to get this compiler to a state, in which it will be able to
