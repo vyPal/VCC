@@ -587,14 +587,7 @@ int lower_instruction(compiler_state *state, instruction i) {
     }
 
     // TODO: Once pushing is implemented, handle stack alignment
-    char *func_name = NULL;
-    for (int j = 0; j < state->mod->function_count; j++)
-      if (state->mod->functions[j].id == i.call.func)
-        func_name = state->mod->functions[j].name;
-    if (func_name == NULL)
-      return -1;
-
-    ret = asprintf(&buf, "\tcall %s\n", func_name);
+    ret = asprintf(&buf, "\tcall %s\n", i.call.func);
     if (ret < 0)
       return ret;
     ret = append(state, buf);

@@ -49,7 +49,7 @@ typedef struct {
       int present;
     } optional;
     struct {
-      func_id func;
+      char *func;
       value_id *args;
       int argc;
     } call;

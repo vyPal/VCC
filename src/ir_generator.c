@@ -464,7 +464,6 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       printf("Couldn't find function with name: %s\n", func);
       return -1;
     }
-    free(func);
     value_id *args = malloc(sizeof(value_id) * c->argc);
     if (args == NULL) {
       return -1;
@@ -484,7 +483,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     *typ = i->ret;
     i->call.argc = def->argc;
     i->call.args = args;
-    i->call.func = def->id;
+    i->call.func = func;
     *ret = i->dst;
     break;
   }

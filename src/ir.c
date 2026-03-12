@@ -144,6 +144,7 @@ void clean_module(module *mod) {
         instruction inst = b.instructions[k];
         clean_type(inst.ret);
         if (inst.op == IR_CALL) {
+          free(inst.call.func);
           if (inst.call.args != NULL)
             free(inst.call.args);
         }
@@ -226,7 +227,7 @@ void print_inst(instruction i) {
     }
     break;
   case IR_CALL:
-    printf("\t%%%d = call @%d(", i.dst, i.call.func);
+    printf("\t%%%d = call @%s(", i.dst, i.call.func);
     for (int j = 0; j < i.call.argc; j++) {
       printf("%%%d", i.call.args[j]);
       if (j != i.call.argc - 1)
@@ -268,6 +269,7 @@ void remove_instuction(function *f, value_id rem) {
       if (i->dst == rem) {
         clean_type(i->ret);
         if (i->op == IR_CALL) {
+          free(i->call.func);
           if (i->call.args != NULL)
             free(i->call.args);
         }
