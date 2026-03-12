@@ -1,4 +1,6 @@
 #include "compiler.h"
+#include "ir.h"
+#include "ir_generator.h"
 #include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -129,8 +131,16 @@ int main(int argc, char **argv) {
     for (int i = 0; i < nodec; i++)
       traverse_tree(nodes[i], 0);
 
+  module mod = new_module();
+  ret = generate_ir(nodes, nodec, &mod);
+  if (ret < 0) {
+    printf("Error generating IR\n");
+    return 1;
+  }
+  print_text_repr(&mod);
+
   char *out_asm;
-  int len = generate_asm(nodes, nodec, &out_asm);
+  int len = generate_asm(&mod, &out_asm);
   if (len < 0) {
     printf("Assembly generation failed\n");
     for (int i = 0; i < nodec; i++) {
@@ -159,6 +169,7 @@ int main(int argc, char **argv) {
 
   free(out_asm);
 
+  clean_module(&mod);
   for (int i = 0; i < nodec; i++) {
     free_node(nodes[i]);
   }
