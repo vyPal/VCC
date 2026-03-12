@@ -288,7 +288,7 @@ int recalculate_ids(function *f) {
     return -1;
   }
 
-  value_id counter = 0;
+  int counter = 0;
   for (int i = 0; i < f->argc; i++) {
     mapto[f->arg_values[i]] = counter++;
   }

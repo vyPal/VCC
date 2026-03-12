@@ -305,6 +305,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     }
     i->op = IR_ALLOCA;
     i->ret = pointer_to(type);
+    *typ = i->ret;
     i->alloca.type = *type;
     i->alloca.count = 1; // TODO: Make dynamic once arrays are implemented
 
@@ -353,6 +354,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     i->op = IR_STORE;
     i->ret.kind =
         TY_VOID; // TODO: Need to implement type checking for the value
+    *typ = i->ret;
     i->binop.lhs = assign->id;
     i->binop.rhs = val;
     *ret = i->dst;
@@ -371,6 +373,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       return -1;
     }
     i->ret = rtyp;
+    *typ = i->ret;
     i->binop.lhs = val;
     i->binop.rhs = rhs;
 
@@ -411,6 +414,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       i->optional.value = val;
     }
     i->ret.kind = TY_VOID;
+    *typ = i->ret;
     *ret = i->dst;
     break;
   case LEAF:;
@@ -443,6 +447,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       i->value = lsym->id;
     }
     free(leaf);
+    *typ = i->ret;
     *ret = i->dst;
     break;
   case CALL:;
@@ -476,6 +481,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     }
     i->op = IR_CALL;
     i->ret = def->ret_type;
+    *typ = i->ret;
     i->call.argc = def->argc;
     i->call.args = args;
     i->call.func = def->id;

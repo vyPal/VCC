@@ -69,7 +69,16 @@ typedef struct {
   int next_len;
 } parser_state;
 
-static inline void skip_whitespace(char **text);
+static inline void skip_whitespace(char **text) {
+  while (1) {
+    char c = **text;
+    if (c != ' ' && c != '\n' && c != '\t' && c != '\r' && c != '\v' &&
+        c != '\f')
+      break;
+    (*text)++;
+  }
+}
+
 int determine_kind(char *text, int *len);
 
 ast_node *parse_primary(parser_state *state);

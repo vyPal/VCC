@@ -3,16 +3,6 @@
 #include "stdlib.h"
 #include "string.h"
 
-static inline void skip_whitespace(char **text) {
-  while (1) {
-    char c = **text;
-    if (c != ' ' && c != '\n' && c != '\t' && c != '\r' && c != '\v' &&
-        c != '\f')
-      break;
-    (*text)++;
-  }
-}
-
 // Reads chars from text until the next token kind is determined
 //
 // Expects next character to not be whitespace

@@ -139,7 +139,6 @@ int dead_store_elim(function *func) {
   if (info == NULL)
     return -1;
 
-  int counter = 0;
   for (int i = 0; i < func->block_count; i++) {
     block b = func->blocks[i];
     for (int j = 0; j < b.instruction_count; j++) {
@@ -180,6 +179,8 @@ int _sizeof(type_def t) {
   case TY_I32:
     return 4;
   case TY_VOID:
+    return 0;
+  default:
     return 0;
   }
 }
