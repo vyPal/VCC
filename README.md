@@ -3,6 +3,8 @@
 This is my attempt at writing a quite basic compiler in C, for a small subset of
 the C language.
 
+![wakatime](https://wakatime.com/badge/user/f464de95-0614-429a-a5db-86630ea3fed3/project/fded8be9-6a20-463f-b99a-793b3f9c9d04.svg)
+
 ## Mirrors
 
 | Host | Details |
@@ -22,18 +24,24 @@ Current TODO list:
 
 ## How to use
 
-To use the compiler, you first need to compile it. I haven't setup and build
-script for that, so I just do it manually:
+To use the compiler, you first need to compile it. I've finally setup a Makefile
+so building is now much easier:
 
 ```bash
-gcc main.c parser.c compiler.c utils.c -o vcc
+make
 ```
 
 And that's about it, you can now run the command and provide a input file
 and optionally the name for the output file that the compiler will generate:
 
 ```bash
-./vcc examples/test.c -o out.s
+./build/vcc examples/test.c -o out.s
+```
+
+Or it is also possible to combine the building and running into one command:
+
+```bash
+make run examples/test.c -o out.s
 ```
 
 Once you have the generated assembly file, you must assemble and link it.
@@ -52,9 +60,10 @@ After this, you will finally have an executable file for x86_64 Linux!
 ## What works
 
 - [x] Function definitions
-- [ ] Defining function arguments
+- [x] Defining function arguments
 - [x] Variable definition
 - [x] Assignment to variables
 - [x] Basic arithmetic (`+ - * / %`)
 - [x] Return void
 - [x] Return value
+- [x] Basic dead code elimination
