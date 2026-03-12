@@ -9,7 +9,7 @@ the C language.
 
 | Host | Details |
 | ---- | ------- |
-| [My personal git server](https://git.vypal.me/FromScratch/Compiler) | Primary server, part of future collection of projects written from scratch |
+| [My personal git server](https://git.sleepat.fit/vyPal/VCC) | Primary server, part of future collection of projects written from scratch |
 | [GitHub](https://github.com/vyPal/VCC) | GitHub mirror - primarily for exposure and to accept Issues/PRs |
 
 ## Plans
