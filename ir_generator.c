@@ -41,6 +41,7 @@ function *make_function(generator_state *state, char *name, type_def ret_type,
     s.id = id;
     s.name = arg_names[i];
     s.type = arg_types[i];
+    s.initialized = 1;
     state->symbols[i] = s;
   }
   def.arg_types = new->arg_types;

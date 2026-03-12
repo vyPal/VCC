@@ -268,17 +268,9 @@ int emit_function_prologue(compiler_state *state, function *f) {
 
     if (b.label == NULL) {
       for (int j = 0; j < f->argc; j++) {
-        // BUG: Handle byte width properly (change register based on sizeof)
-        ret = asprintf(
-            &buf, "\tmov QWORD [rbp-%d], %s\n",
-            state->slots[f->arg_values[j]].offset,
-            reg_names_64[arg_regs[j]]); // TODO: Handle other args on stack
-        if (ret == -1) {
-          free(state->slots);
-          return ret;
-        }
-        ret = append(state, buf);
-        free(buf);
+        location *loc = &state->value_loc[j];
+        loc->kind = LOC_REG;
+        loc->reg = arg_regs[j];
       }
     }
   }
