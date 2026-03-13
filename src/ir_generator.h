@@ -4,7 +4,13 @@
 #include "ir.h"
 #include "parser.h"
 
+typedef enum {
+  SYM_STACK,
+  SYM_VALUE,
+} symbol_kind;
+
 typedef struct {
+  symbol_kind kind;
   char *name;
   type_def type;
   int initialized;

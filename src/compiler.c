@@ -5,10 +5,18 @@
 #include "stdlib.h"
 #include "string.h"
 
-const char *const reg_names_64[] = {"rax", "rbx", "rcx", "rdx",
-                                    "rsi", "rdi", "r8",  "r9"};
-const char *const reg_names_32[] = {"eax", "ebx", "ecx", "edx",
-                                    "esi", "edi", "r8d", "r9d"};
+const char *const reg_names_64[] = {"rax", "rbx", "rcx", "rdx", "rsi",
+                                    "rdi", "r8",  "r9",  "r10", "r11",
+                                    "r12", "r13", "r14", "r15"};
+const char *const reg_names_32[] = {"eax",  "ebx",  "ecx",  "edx",  "esi",
+                                    "edi",  "r8d",  "r9d",  "r10d", "r11d",
+                                    "r12d", "r13d", "r14d", "r15d"};
+const char *const reg_names_16[] = {"ax",   "bx",   "cx",   "dx",   "si",
+                                    "di",   "r8w",  "r9w",  "r10w", "r11w",
+                                    "r12w", "r13w", "r14w", "r15w"};
+const char *const reg_names_8[] = {"al",   "bl",   "cl",   "dl",   "sil",
+                                   "dil",  "r8b",  "r9b",  "r10b", "r11b",
+                                   "r12b", "r13b", "r14b", "r15b"};
 
 const int arg_regs[] = {REG_RDI, REG_RSI, REG_RDX, REG_RCX, REG_R8, REG_R9};
 
@@ -178,10 +186,47 @@ int _sizeof(type_def t) {
     return 8;
   case TY_I32:
     return 4;
+  case TY_I16:
+    return 2;
+  case TY_I8:
+    return 1;
   case TY_VOID:
     return 0;
+  }
+  return 0;
+}
+
+static inline const char *get_width(int reg, int width) {
+  switch (width) {
+  case 1:
+    return reg_names_8[reg];
+  case 2:
+    return reg_names_16[reg];
+  case 4:
+    return reg_names_32[reg];
+  case 8:
+    return reg_names_64[reg];
   default:
-    return 0;
+    printf("PANIC: Trying to get register with index %d of width %d\n", reg,
+           width);
+    exit(1);
+  }
+}
+
+const char *const specifiers[] = {"", "WORD", "DWORD", "QWORD"};
+static inline const char *width_specifier(int width) {
+  switch (width) {
+  case 1:
+    return specifiers[0];
+  case 2:
+    return specifiers[1];
+  case 4:
+    return specifiers[2];
+  case 8:
+    return specifiers[3];
+  default:
+    printf("PANIC: Trying to get width specifier for %d bytes\n", width);
+    exit(1);
   }
 }
 
@@ -271,7 +316,8 @@ int emit_function_prologue(compiler_state *state, function *f) {
       for (int j = 0; j < f->argc; j++) {
         location *loc = &state->value_loc[j];
         loc->kind = LOC_REG;
-        loc->reg = arg_regs[j];
+        loc->reg.id = arg_regs[j];
+        loc->reg.width = state->slots[j].size;
       }
     }
   }
@@ -295,7 +341,8 @@ int spill_register(compiler_state *state, int reg) {
   free_reg(state, reg);
   int id = -1;
   for (int i = 0; i < state->valc; i++) {
-    if (state->value_loc[i].kind == LOC_REG && state->value_loc[i].reg == reg)
+    if (state->value_loc[i].kind == LOC_REG &&
+        state->value_loc[i].reg.id == reg)
       id = i;
   }
   if (id == -1)
@@ -303,8 +350,9 @@ int spill_register(compiler_state *state, int reg) {
 
   location *loc = &state->value_loc[id];
   char *buf;
-  int ret = asprintf(&buf, "\tmov QWORD [rbp-%d], %s\n",
-                     state->slots[id].offset, reg_names_64[loc->reg]);
+  int ret = asprintf(
+      &buf, "\tmov %s [rbp-%d], %s\n", width_specifier(state->slots[id].size),
+      state->slots[id].offset, get_width(loc->reg.id, loc->reg.width));
   if (ret < 0)
     return ret;
   ret = append(state, buf);
@@ -318,6 +366,7 @@ int spill_register(compiler_state *state, int reg) {
 
 int ensure_reg(compiler_state *state, value_id id) {
   location loc = state->value_loc[id];
+  int width = state->slots[id].size;
   int tmp_reg;
   if (loc.kind == LOC_NONE) {
     printf(
@@ -330,8 +379,8 @@ int ensure_reg(compiler_state *state, value_id id) {
     if (tmp_reg < 0)
       return tmp_reg;
     char *buf;
-    int ret =
-        asprintf(&buf, "\tmov %s, %ld\n", reg_names_64[tmp_reg], loc.immediate);
+    int ret = asprintf(&buf, "\tmov %s, %ld\n", get_width(tmp_reg, width),
+                       loc.immediate);
     if (ret < 0)
       return ret;
     ret = append(state, buf);
@@ -343,8 +392,9 @@ int ensure_reg(compiler_state *state, value_id id) {
     if (tmp_reg < 0)
       return tmp_reg;
     char *buf;
-    int ret = asprintf(&buf, "\tmov %s, QWORD [rbp-%d]\n",
-                       reg_names_64[tmp_reg], loc.stack);
+    int ret =
+        asprintf(&buf, "\tmov %s, %s [rbp-%d]\n", get_width(tmp_reg, width),
+                 width_specifier(width), loc.stack);
     if (ret < 0)
       return ret;
     ret = append(state, buf);
@@ -352,15 +402,16 @@ int ensure_reg(compiler_state *state, value_id id) {
     if (ret < 0)
       return ret;
   } else if (loc.kind == LOC_REG) {
-    tmp_reg = loc.reg;
+    tmp_reg = loc.reg.id;
   }
   return tmp_reg;
 }
 
 int ensure_in_reg(compiler_state *state, value_id id, int reg) {
   location *loc = &state->value_loc[id];
+  int width = state->slots[id].size;
 
-  if (loc->kind == LOC_REG && loc->reg == reg)
+  if (loc->kind == LOC_REG && loc->reg.id == reg)
     return 0;
   if (loc->kind == LOC_NONE) {
     printf(
@@ -379,21 +430,22 @@ int ensure_in_reg(compiler_state *state, value_id id, int reg) {
 
   char *buf;
   if (loc->kind == LOC_REG) {
-    ret = asprintf(&buf, "\tmov %s, %s\n", reg_names_64[reg],
-                   reg_names_64[loc->reg]);
+    ret = asprintf(&buf, "\tmov %s, %s\n", get_width(reg, width),
+                   get_width(loc->reg.id, loc->reg.width));
     if (ret < 0)
       return ret;
     ret = append(state, buf);
     free(buf);
   } else if (loc->kind == LOC_IMM) {
-    ret = asprintf(&buf, "\tmov %s, %ld\n", reg_names_64[reg], loc->immediate);
+    ret = asprintf(&buf, "\tmov %s, %ld\n", get_width(reg, width),
+                   loc->immediate);
     if (ret < 0)
       return ret;
     ret = append(state, buf);
     free(buf);
   } else {
-    ret = asprintf(&buf, "\tmov %s, QWORD [rbp-%d]\n", reg_names_64[reg],
-                   loc->stack);
+    ret = asprintf(&buf, "\tmov %s, %s [rbp-%d]\n", width_specifier(width),
+                   get_width(reg, width), loc->stack);
     if (ret < 0)
       return ret;
     ret = append(state, buf);
@@ -401,7 +453,7 @@ int ensure_in_reg(compiler_state *state, value_id id, int reg) {
   }
 
   loc->kind = LOC_REG;
-  loc->reg = reg;
+  loc->reg.id = reg;
 
   state->reg_used[reg] = 1;
 
@@ -412,7 +464,7 @@ int lower_instruction(compiler_state *state, instruction i) {
   int ret = 0;
   char *buf;
   location *loc;
-  int tmp_reg, tmp_reg_2;
+  int tmp_reg, tmp_reg_2, width;
   // BUG: Handle register width properly
   switch (i.op) {
   case IR_ADD:
@@ -423,8 +475,10 @@ int lower_instruction(compiler_state *state, instruction i) {
     if (tmp_reg_2 < 0)
       return tmp_reg_2;
 
-    ret = asprintf(&buf, "\tadd %s, %s\n", reg_names_64[tmp_reg],
-                   reg_names_64[tmp_reg_2]);
+    width = state->slots[i.binop.lhs].size;
+
+    ret = asprintf(&buf, "\tadd %s, %s\n", get_width(tmp_reg, width),
+                   get_width(tmp_reg_2, width));
     if (ret < 0)
       return ret;
     ret = append(state, buf);
@@ -433,7 +487,8 @@ int lower_instruction(compiler_state *state, instruction i) {
       return ret;
     loc = &state->value_loc[i.dst];
     loc->kind = LOC_REG;
-    loc->reg = tmp_reg;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = state->slots[i.binop.lhs].size;
     free_reg(state, tmp_reg_2);
     break;
   case IR_SUB:
@@ -444,8 +499,10 @@ int lower_instruction(compiler_state *state, instruction i) {
     if (tmp_reg_2 < 0)
       return tmp_reg_2;
 
-    ret = asprintf(&buf, "\tsub %s, %s\n", reg_names_64[tmp_reg],
-                   reg_names_64[tmp_reg_2]);
+    width = state->slots[i.binop.lhs].size;
+
+    ret = asprintf(&buf, "\tsub %s, %s\n", get_width(tmp_reg, width),
+                   get_width(tmp_reg_2, width));
     if (ret < 0)
       return ret;
     ret = append(state, buf);
@@ -454,7 +511,8 @@ int lower_instruction(compiler_state *state, instruction i) {
       return ret;
     loc = &state->value_loc[i.dst];
     loc->kind = LOC_REG;
-    loc->reg = tmp_reg;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = state->slots[i.binop.lhs].size;
     free_reg(state, tmp_reg_2);
     break;
   case IR_MUL:
@@ -465,8 +523,10 @@ int lower_instruction(compiler_state *state, instruction i) {
     if (tmp_reg_2 < 0)
       return tmp_reg_2;
 
-    ret = asprintf(&buf, "\tmul %s, %s\n", reg_names_64[tmp_reg],
-                   reg_names_64[tmp_reg_2]);
+    width = state->slots[i.binop.lhs].size;
+
+    ret = asprintf(&buf, "\tmul %s, %s\n", get_width(tmp_reg, width),
+                   get_width(tmp_reg_2, width));
     if (ret < 0)
       return ret;
     ret = append(state, buf);
@@ -475,7 +535,8 @@ int lower_instruction(compiler_state *state, instruction i) {
       return ret;
     loc = &state->value_loc[i.dst];
     loc->kind = LOC_REG;
-    loc->reg = tmp_reg;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = state->slots[i.binop.lhs].size;
     free_reg(state, tmp_reg_2);
     break;
   case IR_SDIV:
@@ -485,13 +546,19 @@ int lower_instruction(compiler_state *state, instruction i) {
     ret = ensure_in_reg(state, i.binop.lhs, REG_RAX);
     if (ret < 0)
       return ret;
-    ret = append(state, "\tcqo\n");
+    width = state->slots[i.binop.lhs].size;
+    if (width == 8)
+      ret = append(state, "\tcqo\n");
+    else if (width == 4)
+      ret = append(state, "\tCDQ\n");
+    else if (width == 2)
+      ret = append(state, "\tCWD\n");
     if (ret < 0)
       return ret;
     state->reg_used[REG_RDX] = 1;
     tmp_reg = ensure_reg(state, i.binop.rhs);
 
-    ret = asprintf(&buf, "\tidivq %s\n", reg_names_64[tmp_reg]);
+    ret = asprintf(&buf, "\tidiv %s\n", get_width(tmp_reg, width));
     if (ret < 0)
       return ret;
     ret = append(state, buf);
@@ -500,7 +567,8 @@ int lower_instruction(compiler_state *state, instruction i) {
       return ret;
     loc = &state->value_loc[i.dst];
     loc->kind = LOC_REG;
-    loc->reg = REG_RAX;
+    loc->reg.id = REG_RAX;
+    loc->reg.width = width;
     free_reg(state, tmp_reg);
     free_reg(state, REG_RDX);
     break;
@@ -511,13 +579,19 @@ int lower_instruction(compiler_state *state, instruction i) {
     ret = ensure_in_reg(state, i.binop.lhs, REG_RAX);
     if (ret < 0)
       return ret;
-    ret = append(state, "\tcqo\n");
+    width = state->slots[i.binop.lhs].size;
+    if (width == 8)
+      ret = append(state, "\tcqo\n");
+    else if (width == 4)
+      ret = append(state, "\tCDQ\n");
+    else if (width == 2)
+      ret = append(state, "\tCWD\n");
     if (ret < 0)
       return ret;
     state->reg_used[REG_RDX] = 1;
     tmp_reg = ensure_reg(state, i.binop.rhs);
 
-    ret = asprintf(&buf, "\tidiv %s\n", reg_names_64[tmp_reg]);
+    ret = asprintf(&buf, "\tidiv %s\n", get_width(tmp_reg, width));
     if (ret < 0)
       return ret;
     ret = append(state, buf);
@@ -526,7 +600,8 @@ int lower_instruction(compiler_state *state, instruction i) {
       return ret;
     loc = &state->value_loc[i.dst];
     loc->kind = LOC_REG;
-    loc->reg = REG_RDX;
+    loc->reg.id = REG_RDX;
+    loc->reg.width = width;
     free_reg(state, tmp_reg);
     free_reg(state, REG_RAX);
     break;
@@ -542,8 +617,9 @@ int lower_instruction(compiler_state *state, instruction i) {
     break;
   case IR_STORE:
     loc = &state->value_loc[i.binop.rhs];
+    width = state->slots[i.binop.lhs].size;
     if (loc->kind == LOC_IMM) {
-      ret = asprintf(&buf, "\tmov QWORD [rbp-%d], %ld\n",
+      ret = asprintf(&buf, "\tmov %s [rbp-%d], %ld\n", width_specifier(width),
                      state->slots[i.binop.lhs].offset, loc->immediate);
       if (ret < 0)
         return ret;
@@ -555,8 +631,9 @@ int lower_instruction(compiler_state *state, instruction i) {
       tmp_reg = ensure_reg(state, i.binop.rhs);
       if (tmp_reg < 0)
         return tmp_reg;
-      ret = asprintf(&buf, "\tmov QWORD [rbp-%d], %s\n",
-                     state->slots[i.binop.lhs].offset, reg_names_64[tmp_reg]);
+      ret =
+          asprintf(&buf, "\tmov %s [rbp-%d], %s\n", width_specifier(width),
+                   state->slots[i.binop.lhs].offset, get_width(tmp_reg, width));
       if (ret < 0)
         return ret;
       ret = append(state, buf);
@@ -575,7 +652,8 @@ int lower_instruction(compiler_state *state, instruction i) {
       return tmp_reg;
     loc = &state->value_loc[i.dst];
     loc->kind = LOC_REG;
-    loc->reg = tmp_reg;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = state->slots[i.value].size;
     break;
   case IR_CALL:
     for (int j = 0; j < i.call.argc; j++) {
@@ -599,16 +677,18 @@ int lower_instruction(compiler_state *state, instruction i) {
 
     loc = &state->value_loc[i.dst];
     loc->kind = LOC_REG;
-    loc->reg = REG_RAX;
+    loc->reg.id = REG_RAX;
+    loc->reg.width = _sizeof(i.call.type);
     break;
   case IR_RET:
     if (i.optional.present) {
       tmp_reg = ensure_reg(state, i.optional.value);
       if (tmp_reg < 0)
         return tmp_reg;
+      width = state->slots[i.optional.value].size;
       if (tmp_reg != REG_RAX) {
-        ret = asprintf(&buf, "\tmov %s, %s\n", reg_names_64[REG_RAX],
-                       reg_names_64[tmp_reg]);
+        ret = asprintf(&buf, "\tmov %s, %s\n", get_width(REG_RAX, width),
+                       get_width(tmp_reg, width));
         if (ret < 0)
           return ret;
         ret = append(state, buf);
@@ -649,9 +729,6 @@ int generate_asm(module *mod, char **output) {
         return ret;
       }
     }
-    // TODO: Remove
-    printf("Post optimization:\n");
-    print_text_repr(mod);
 
     ret = emit_function_prologue(&state, f);
     if (ret < 0) {

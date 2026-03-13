@@ -35,7 +35,10 @@ typedef struct {
   location_kind kind;
 
   union {
-    int reg;
+    struct {
+      int id;
+      int width;
+    } reg;
     int stack;
     long immediate;
   };

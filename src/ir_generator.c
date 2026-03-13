@@ -38,6 +38,7 @@ function *make_function(generator_state *state, char *name, type_def ret_type,
       return NULL;
     }
     symbol s = {0};
+    s.kind = SYM_VALUE;
     s.id = id;
     s.name = arg_names[i];
     s.type = arg_types[i];
@@ -157,10 +158,13 @@ int make_type(generator_state *state, char *string, type_def *type) {
     }
     type->kind = TY_PTR;
     type->base = child;
-  } else if (strcmp(string, "int") ==
-             0) { // TODO: Handle types properlly once full support
-    type->kind = TY_I32;
+  } else if (strcmp(string, "char") == 0) {
+    type->kind = TY_I8;
+  } else if (strcmp(string, "short") == 0 || strcmp(string, "int") == 0) {
+    type->kind = TY_I16;
   } else if (strcmp(string, "long") == 0) {
+    type->kind = TY_I32;
+  } else if (strcmp(string, "long long") == 0) {
     type->kind = TY_I64;
   } else if (strcmp(string, "void") == 0) {
     type->kind = TY_VOID;
@@ -310,6 +314,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     i->alloca.count = 1; // TODO: Make dynamic once arrays are implemented
 
     new_symbol->id = i->dst;
+    new_symbol->kind = SYM_STACK;
 
     if (v->initializer != NULL) {
       if (generate_node(state, v->initializer, 1, &val, &rtyp) < 0) {
@@ -427,28 +432,38 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     leaf[l->len] = 0;
 
     symbol *lsym = find_value(state, leaf);
-    i = new_instruction(state->current_func, state->current_block);
-    if (i == NULL) {
-      return -1;
-    }
     if (lsym == NULL) {
+      i = new_instruction(state->current_func, state->current_block);
+      if (i == NULL) {
+        return -1;
+      }
       char *end;
       long constant = strtol(leaf, &end, 10);
       i->op = IR_CONST;
       i->ret.kind = TY_I32; // TODO: Determine
       i->constant = constant;
+      *typ = i->ret;
+      *ret = i->dst;
     } else {
       if (lsym->initialized == 0) {
         printf("Trying to load uninitialized value\n");
         return -1;
       }
-      i->op = IR_LOAD;
-      i->ret = lsym->type;
-      i->value = lsym->id;
+      if (lsym->kind == SYM_STACK) {
+        i = new_instruction(state->current_func, state->current_block);
+        if (i == NULL) {
+          return -1;
+        }
+        i->op = IR_LOAD;
+        i->ret = lsym->type;
+        i->value = lsym->id;
+        *ret = i->dst;
+      } else {
+        *ret = lsym->id;
+      }
+      *typ = lsym->type;
     }
     free(leaf);
-    *typ = i->ret;
-    *ret = i->dst;
     break;
   case CALL:;
     ast_node_call *c = (ast_node_call *)node->node;
@@ -484,6 +499,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     i->call.argc = def->argc;
     i->call.args = args;
     i->call.func = func;
+    i->call.type = def->ret_type;
     *ret = i->dst;
     break;
   }

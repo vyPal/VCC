@@ -15,6 +15,8 @@ typedef struct {
   struct {
     unsigned int help : 1;
     unsigned int print_ast : 1;
+    unsigned int print_ir : 1;
+    unsigned int print_asm : 1;
   } flags;
 } args;
 
@@ -39,6 +41,10 @@ int parse_args(args *args, int argc, char **argv) {
       args->flags.help = 1;
     } else if (strncmp("-a", argv[index], 2) == 0) {
       args->flags.print_ast = 1;
+    } else if (strncmp("-i", argv[index], 2) == 0) {
+      args->flags.print_ir = 1;
+    } else if (strncmp("-s", argv[index], 2) == 0) {
+      args->flags.print_asm = 1;
     } else {
       if (args->inputs == NULL) {
         args->inputs = malloc(sizeof(char *) * ++args->input_count);
@@ -137,7 +143,6 @@ int main(int argc, char **argv) {
     printf("Error generating IR\n");
     return 1;
   }
-  print_text_repr(&mod);
 
   char *out_asm;
   int len = generate_asm(&mod, &out_asm);
@@ -151,6 +156,9 @@ int main(int argc, char **argv) {
     free(contents);
     return 1;
   }
+
+  if (args.flags.print_ir)
+    print_text_repr(&mod);
 
   FILE *output = fopen(args.output, "w");
   if (output == NULL) {
@@ -166,6 +174,9 @@ int main(int argc, char **argv) {
 
   fwrite(out_asm, 1, len, output);
   fclose(output);
+
+  if (args.flags.print_asm)
+    printf("%s", out_asm);
 
   free(out_asm);
 

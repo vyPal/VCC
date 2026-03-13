@@ -9,7 +9,7 @@ typedef uint32_t block_id;
 typedef uint32_t func_id;
 
 // Currently supported types
-typedef enum { TY_I64, TY_I32, TY_VOID, TY_PTR } type_kind;
+typedef enum { TY_I64, TY_I32, TY_I16, TY_I8, TY_VOID, TY_PTR } type_kind;
 
 // Container for additional type data
 typedef struct type_def_t {
@@ -52,6 +52,7 @@ typedef struct {
       char *func;
       value_id *args;
       int argc;
+      type_def type;
     } call;
     struct {
       type_def type;

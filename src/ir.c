@@ -145,6 +145,7 @@ void clean_module(module *mod) {
         clean_type(inst.ret);
         if (inst.op == IR_CALL) {
           free(inst.call.func);
+          clean_type(inst.call.type);
           if (inst.call.args != NULL)
             free(inst.call.args);
         }
@@ -171,6 +172,12 @@ void print_type(type_def t) {
     break;
   case TY_I32:
     printf("i32");
+    break;
+  case TY_I16:
+    printf("i16");
+    break;
+  case TY_I8:
+    printf("i8");
     break;
   case TY_PTR:
     printf("*");
@@ -227,7 +234,9 @@ void print_inst(instruction i) {
     }
     break;
   case IR_CALL:
-    printf("\t%%%d = call @%s(", i.dst, i.call.func);
+    printf("\t%%%d = call ", i.dst);
+    print_type(i.call.type);
+    printf("@%s(", i.call.func);
     for (int j = 0; j < i.call.argc; j++) {
       printf("%%%d", i.call.args[j]);
       if (j != i.call.argc - 1)
