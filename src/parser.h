@@ -82,7 +82,8 @@ static inline void skip_whitespace(char **text) {
 int determine_kind(char *text, int *len);
 
 ast_node *parse_primary(parser_state *state);
-ast_node *parse_operator(parser_state *state);
+ast_node *parse_addsub(parser_state *state);
+ast_node *parse_muldiv(parser_state *state);
 ast_node *parse_statement(parser_state *state, ast_node_function *parent_func);
 ast_node *parse_function(parser_state *state);
 
