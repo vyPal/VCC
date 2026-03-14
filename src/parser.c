@@ -366,7 +366,7 @@ ast_node *parse_function(parser_state *s) {
   func->nodec = 0;
   func->localc = 0;
   func->nodes = NULL;
-  while (s->current_kind != 4) {
+  while (!(s->current_kind == 4 && *s->src == '}')) {
     func->nodec++;
 
     ast_node **nodes = realloc(func->nodes, sizeof(ast_node *) * func->nodec);
