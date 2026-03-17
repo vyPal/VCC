@@ -63,6 +63,24 @@ void advance(parser_state *s) {
   s->next_kind = determine_kind(s->next_start, &s->next_len);
 }
 
+int parse_type(parser_state *s, parsed_type *out) {
+  if (s->current_kind != 1)
+    return -1;
+
+  out->base.ptr = s->src;
+  out->base.len = s->current_len;
+  out->pointer_depth = 0;
+
+  advance(s);
+
+  while (s->current_kind == 3 && *s->src == '*') {
+    out->pointer_depth++;
+    advance(s);
+  }
+
+  return 0;
+}
+
 ast_node *parse_primary(parser_state *s) {
   if (s->current_kind == 1 && s->next_kind == 4 &&
       strncmp("(", s->next_start, 1) == 0) {

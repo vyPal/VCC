@@ -21,14 +21,19 @@ typedef struct {
   void *node;
 } ast_node;
 
+typedef struct {
+  token_slice base;
+  int pointer_depth;
+} parsed_type;
+
 // specific AST node structs
 
 typedef struct {
   token_slice name;
   int argc;
   token_slice *arg_names;
-  token_slice *arg_types;
-  token_slice ret_type;
+  parsed_type *arg_types;
+  parsed_type ret_type;
   int nodec;
   ast_node **nodes; // Pointer to array of `ast_node`s
   int localc;
@@ -36,7 +41,7 @@ typedef struct {
 
 typedef struct {
   token_slice name;
-  token_slice type;
+  parsed_type type;
   ast_node *initializer; // Pointer to optional initializer
 } ast_node_variable;
 
@@ -80,6 +85,8 @@ static inline void skip_whitespace(char **text) {
 }
 
 int determine_kind(char *text, int *len);
+
+int parse_type(parser_state *state, parsed_type *out);
 
 ast_node *parse_primary(parser_state *state);
 ast_node *parse_addsub(parser_state *state);
