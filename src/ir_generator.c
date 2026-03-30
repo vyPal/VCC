@@ -144,32 +144,34 @@ symbol *push_symbol(generator_state *state, char *name, type_def type) {
   return state->symbols + (state->symbolc++);
 }
 
-int make_type(generator_state *state, char *string, type_def *type) {
-  if (strlen(string) == 0)
+int make_type(generator_state *state, parsed_type t, type_def *type) {
+  if (strlen(t.base) == 0)
     return -1;
-  if (string[0] == '*') {
+  if (t.pointer_depth > 0) {
     type_def *child = malloc(sizeof(type_def));
     if (child == NULL) {
       return -1;
     }
-    if (make_type(state, ++string, child) < 0) {
+    t.pointer_depth--;
+    if (make_type(state, t, child) < 0) {
       free(child);
       return -1;
     }
     type->kind = TY_PTR;
     type->base = child;
-  } else if (strcmp(string, "char") == 0) {
+  } else if (strcmp(t.base, "char") == 0) {
     type->kind = TY_I8;
-  } else if (strcmp(string, "short") == 0 || strcmp(string, "int") == 0) {
+  } else if (strcmp(t.base, "short") == 0 || strcmp(t.base, "int") == 0 ||
+             strcmp(t.base, "short int") == 0) {
     type->kind = TY_I16;
-  } else if (strcmp(string, "long") == 0) {
-    type->kind = TY_I32;
-  } else if (strcmp(string, "long long") == 0) {
+  } else if (strcmp(t.base, "long long") == 0) {
     type->kind = TY_I64;
-  } else if (strcmp(string, "void") == 0) {
+  } else if (strcmp(t.base, "long") == 0 || strcmp(t.base, "long int")) {
+    type->kind = TY_I32;
+  } else if (strcmp(t.base, "void") == 0) {
     type->kind = TY_VOID;
   } else {
-    printf("Unknown type: %s\n", string);
+    printf("Unknown type: %s\n", t.base);
     return -1;
   }
   return 0;
@@ -205,14 +207,6 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       }
       for (int i = 0; i < f->argc; i++) {
         token_slice name = f->arg_names[i];
-        token_slice type = f->arg_types[i];
-        char *ty = malloc(sizeof(char) * (type.len + 1));
-        if (ty == NULL) {
-          printf("Failed to allocate space for type string\n");
-          return -1;
-        }
-        memcpy(ty, type.ptr, type.len);
-        ty[type.len] = 0;
         char *n = malloc(sizeof(char) * (name.len + 1));
         if (n == NULL) {
           printf("Failed to allocate space for arg name string\n");
@@ -221,24 +215,15 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
         memcpy(n, name.ptr, name.len);
         n[name.len] = 0;
         arg_names[i] = n;
-        if (make_type(state, ty, arg_types + i) < 0) {
+        if (make_type(state, f->arg_types[i], arg_types + i) < 0) {
           return -1;
         }
-        free(ty);
       }
     }
     type_def ret_type;
-    char *ret_ty = malloc(sizeof(char) * (f->ret_type.len + 1));
-    if (ret_ty == NULL) {
-      printf("Failed to allocate space for type string\n");
+    if (make_type(state, f->ret_type, &ret_type) < 0) {
       return -1;
     }
-    memcpy(ret_ty, f->ret_type.ptr, f->ret_type.len);
-    ret_ty[f->ret_type.len] = 0;
-    if (make_type(state, ret_ty, &ret_type) < 0) {
-      return -1;
-    }
-    free(ret_ty);
     char *name = malloc(sizeof(char) * (f->name.len + 1));
     if (name == NULL) {
       printf("Failed to allocate space for name string\n");
@@ -279,17 +264,9 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     if (type == NULL) {
       return -1;
     }
-    char *ty = malloc(sizeof(char) * (v->type.len + 1));
-    if (ty == NULL) {
-      printf("Failed to allocate space for type string\n");
+    if (make_type(state, v->type, type) < 0) {
       return -1;
     }
-    memcpy(ty, v->type.ptr, v->type.len);
-    ty[v->type.len] = 0;
-    if (make_type(state, ty, type) < 0) {
-      return -1;
-    }
-    free(ty);
     char *varname = malloc(sizeof(char) * (v->name.len + 1));
     if (varname == NULL) {
       printf("Failed to allocate space for name string\n");
@@ -317,6 +294,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     new_symbol->kind = SYM_STACK;
 
     if (v->initializer != NULL) {
+      state->requested_type = *type;
       if (generate_node(state, v->initializer, 1, &val, &rtyp) < 0) {
         return -1;
       }
@@ -349,6 +327,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     }
     assign->initialized = 1;
 
+    state->requested_type = assign->type;
     if (generate_node(state, a->value, 1, &val, &rtyp) < 0) {
       return -1;
     }
@@ -407,6 +386,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       i->op = IR_RET;
       i->optional.present = 0;
     } else {
+      state->requested_type = state->current_func->ret_type;
       if (generate_node(state, node->node, 1, &val, &rtyp) < 0) {
         return -1;
       }
@@ -440,7 +420,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       char *end;
       long constant = strtol(leaf, &end, 10);
       i->op = IR_CONST;
-      i->ret.kind = TY_I32; // TODO: Determine
+      i->ret = state->requested_type;
       i->constant = constant;
       *typ = i->ret;
       *ret = i->dst;
@@ -484,6 +464,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       return -1;
     }
     for (int i = 0; i < c->argc; i++) {
+      state->requested_type = def->arg_types[i];
       if (generate_node(state, c->args[i], 1, &val, &rtyp) < 0) {
         return -1;
       }

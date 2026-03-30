@@ -22,7 +22,7 @@ typedef struct {
 } ast_node;
 
 typedef struct {
-  token_slice base;
+  char *base;
   int pointer_depth;
 } parsed_type;
 

@@ -63,15 +63,73 @@ void advance(parser_state *s) {
   s->next_kind = determine_kind(s->next_start, &s->next_len);
 }
 
+#define N_BUILTIN_TYPES 5
+const char *const builtin_types[N_BUILTIN_TYPES] = {"char", "short", "int",
+                                                    "long", "void"};
+#define N_ALLOWED_PAIRS 3
+const int allowed_pairs[N_ALLOWED_PAIRS][2] = {{1, 2}, {3, 2}, {3, 3}};
+
+int is_type(char *in, int len) {
+  if (in == NULL || *in == 0 || len == 0)
+    return -1;
+  int type = -1;
+  for (int i = 0; i < N_BUILTIN_TYPES; i++) {
+    if (strncmp(in, builtin_types[i], len) == 0) {
+      type = i;
+      break;
+    }
+  }
+  return type;
+}
+
+int can_combine(int first, int second) {
+  for (int i = 0; i < N_ALLOWED_PAIRS; i++) {
+    if (allowed_pairs[i][0] == first && allowed_pairs[i][1] == second)
+      return 1;
+  }
+  return 0;
+}
+
 int parse_type(parser_state *s, parsed_type *out) {
   if (s->current_kind != 1)
     return -1;
 
-  out->base.ptr = s->src;
-  out->base.len = s->current_len;
-  out->pointer_depth = 0;
+  int type = is_type(s->src, s->current_len);
+  if (type < 0)
+    return -1;
 
+  int tlen = strlen(builtin_types[type]);
+  int baselen = tlen + 1;
+  out->base = malloc(sizeof(char) * baselen);
+  if (out->base == NULL) {
+    printf("Failed to allocate memory for type\n");
+    return -1;
+  }
+  memcpy(out->base, builtin_types[type], tlen);
+  out->base[tlen] = 0;
   advance(s);
+
+  int ltype;
+  for (ltype = type; (type = is_type(s->src, s->current_len)) > -1 &&
+                     can_combine(ltype, type);
+       advance(s)) {
+    char *new = realloc(
+        out->base, sizeof(char) * (baselen + strlen(builtin_types[type]) + 1));
+    if (new == NULL) {
+      free(out->base);
+      printf("Failed to reallocate memory for type\n");
+      return -1;
+    }
+    out->base = new;
+    out->base[baselen - 1] = ' ';
+    memcpy(out->base + baselen, builtin_types[type],
+           strlen(builtin_types[type]));
+    baselen += strlen(builtin_types[type]) + 1;
+    out->base[baselen - 1] = 0;
+    ltype = type;
+  }
+
+  out->pointer_depth = 0;
 
   while (s->current_kind == 3 && *s->src == '*') {
     out->pointer_depth++;
@@ -99,10 +157,18 @@ ast_node *parse_primary(parser_state *s) {
     call->name.ptr = s->src;
     call->name.len = s->current_len;
     advance(s); // name
+    if (!(s->current_kind == 4 && *s->src == '(')) {
+      free(call->args);
+      free(call);
+      free(node);
+      printf("Expected start of arguments list (`(`), found %.*s\n",
+             s->current_len, s->src);
+      return NULL;
+    }
     advance(s); // (
     call->argc = 0;
     call->args = NULL;
-    while (s->current_kind == 1) {
+    while (s->current_kind == 1 || s->current_kind == 2) {
       call->argc++;
 
       ast_node **args = realloc(call->args, sizeof(ast_node *) * call->argc);
@@ -244,6 +310,7 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
     return NULL;
   }
 
+  parsed_type ty;
   if (s->current_len == 6 && strncmp(s->src, "return", 6) == 0) {
     node->type = RETURN;
     advance(s); // return
@@ -252,7 +319,7 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
     } else {
       node->node = parse_addsub(s);
     }
-  } else if (s->next_kind == 4) {
+  } else if (parse_type(s, &ty) < 0) {
     if (strncmp("(", s->next_start, 1) == 0) {
       free(node);
       node = parse_primary(s);
@@ -285,7 +352,7 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
       printf("Unexpected character: `%.*s`\n", s->next_len, s->next_start);
       return NULL;
     }
-  } else if (s->next_kind == 1) {
+  } else {
     node->type = VARIABLE;
     parent_func->localc++;
     ast_node_variable *variable = malloc(sizeof(ast_node_variable));
@@ -295,12 +362,11 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
       return NULL;
     }
 
-    variable->name.ptr = s->next_start;
-    variable->name.len = s->next_len;
+    variable->type = ty;
 
-    variable->type.ptr = s->src;
-    variable->type.len = s->current_len;
-    advance(s); // type
+    variable->name.ptr = s->src;
+    variable->name.len = s->current_len;
+
     advance(s); // name
     if (!(s->current_kind == 4 && *s->src == '=')) {
       free(variable);
@@ -340,13 +406,15 @@ ast_node *parse_function(parser_state *s) {
     return NULL;
   }
 
-  func->name.ptr = s->next_start;
-  func->name.len = s->next_len;
+  int ret = parse_type(s, &func->ret_type);
+  if (ret < 0) {
+    free(node);
+    return NULL;
+  }
 
-  func->ret_type.ptr = s->src;
-  func->ret_type.len = s->current_len;
+  func->name.ptr = s->src;
+  func->name.len = s->current_len;
 
-  advance(s); // type
   advance(s); // name
   if (!(s->current_kind == 4 && *s->src == '(')) {
     free(func);
@@ -375,8 +443,8 @@ ast_node *parse_function(parser_state *s) {
       return NULL;
     }
     func->arg_names = names;
-    token_slice *types =
-        realloc(func->arg_types, sizeof(token_slice) * func->argc);
+    parsed_type *types =
+        realloc(func->arg_types, sizeof(parsed_type) * func->argc);
     if (types == NULL) {
       if (func->arg_names != NULL)
         free(func->arg_names);
@@ -389,12 +457,17 @@ ast_node *parse_function(parser_state *s) {
     }
     func->arg_types = types;
 
-    func->arg_names[func->argc - 1].ptr = s->next_start;
-    func->arg_names[func->argc - 1].len = s->next_len;
-    func->arg_types[func->argc - 1].ptr = s->src;
-    func->arg_types[func->argc - 1].len = s->current_len;
+    int ret = parse_type(s, &func->arg_types[func->argc - 1]);
+    if (ret < 0) {
+      free(func->arg_types);
+      free(func->arg_names);
+      free(func);
+      free(node);
+      return NULL;
+    }
+    func->arg_names[func->argc - 1].ptr = s->src;
+    func->arg_names[func->argc - 1].len = s->current_len;
 
-    advance(s); // type
     advance(s); // name
     if (s->current_kind == 4 && *s->src == ',') {
       advance(s); // ,
@@ -443,6 +516,8 @@ ast_node *parse_function(parser_state *s) {
     }
     func->nodes = nodes;
     func->nodes[func->nodec - 1] = parse_statement(s, func);
+    if (func->nodes[func->nodec - 1] == NULL)
+      return NULL;
   }
   if (!(s->current_kind == 4 && *s->src == '}')) {
     for (int i = 0; i < func->nodec; i++) {
@@ -477,6 +552,7 @@ int parse_text(char *text, ast_node ***nodes) {
   state.src = text;
   advance(&state);
 
+  void *ret;
   while (state.current_len != 0) {
     nodec++;
 
@@ -491,7 +567,9 @@ int parse_text(char *text, ast_node ***nodes) {
       return 0;
     }
     *nodes = new;
-    (*nodes)[nodec - 1] = parse_function(&state);
+    ret = (*nodes)[nodec - 1] = parse_function(&state);
+    if (ret == NULL)
+      return -1;
   }
 
   return nodec;
@@ -549,6 +627,12 @@ void free_node(ast_node *node) {
   free(node);
 }
 
+void print_parsed_type(parsed_type t) {
+  printf("%s", t.base);
+  for (int i = 0; i < t.pointer_depth; i++)
+    printf("*");
+}
+
 void traverse_tree(ast_node *node, int level) {
   if (node == NULL) {
     printf("NULL NODE (ERROR)\n");
@@ -558,11 +642,13 @@ void traverse_tree(ast_node *node, int level) {
   switch (node->type) {
   case FUNCTION:;
     ast_node_function *f = (ast_node_function *)node->node;
-    printf("Function | name: `%.*s` return: `%.*s` args: ", f->name.len,
-           f->name.ptr, f->ret_type.len, f->ret_type.ptr);
+    printf("Function | name: `%.*s` return: `", f->name.len, f->name.ptr);
+    print_parsed_type(f->ret_type);
+    printf("` args: ");
     for (int i = 0; i < f->argc; i++) {
-      printf("`%.*s %.*s`", f->arg_types[i].len, f->arg_types[i].ptr,
-             f->arg_names[i].len, f->arg_names[i].ptr);
+      printf("`");
+      print_parsed_type(f->arg_types[i]);
+      printf(" %.*s`", f->arg_names[i].len, f->arg_names[i].ptr);
       if (i != f->argc - 1)
         printf(", ");
     }
@@ -573,8 +659,9 @@ void traverse_tree(ast_node *node, int level) {
     break;
   case VARIABLE:;
     ast_node_variable *v = (ast_node_variable *)node->node;
-    printf("Variable | name: `%.*s` type: `%.*s`", v->name.len, v->name.ptr,
-           v->type.len, v->type.ptr);
+    printf("Variable | name: `%.*s` type: `", v->name.len, v->name.ptr);
+    print_parsed_type(v->type);
+    printf("`");
     if (v->initializer != NULL) {
       printf(" | initializer:\n");
       traverse_tree(v->initializer, level + 1);

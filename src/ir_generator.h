@@ -36,6 +36,7 @@ typedef struct {
   int symbolc;
   function_def *functions;
   int defc;
+  type_def requested_type;
 } generator_state;
 
 function *make_function(generator_state *state, char *name, type_def ret_type,
@@ -46,7 +47,7 @@ symbol *find_value(generator_state *state, char *name);
 function_def *find_function(generator_state *state, char *name);
 symbol *push_symbol(generator_state *state, char *name, type_def type);
 
-int make_type(generator_state *state, char *string, type_def *type);
+int make_type(generator_state *state, parsed_type t, type_def *type);
 
 int generate_ir(ast_node **source, int nodec, module *module);
 
