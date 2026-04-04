@@ -166,7 +166,7 @@ int make_type(generator_state *state, parsed_type t, type_def *type) {
     type->kind = TY_I16;
   } else if (strcmp(t.base, "long long") == 0) {
     type->kind = TY_I64;
-  } else if (strcmp(t.base, "long") == 0 || strcmp(t.base, "long int")) {
+  } else if (strcmp(t.base, "long") == 0 || strcmp(t.base, "long int") == 0) {
     type->kind = TY_I32;
   } else if (strcmp(t.base, "void") == 0) {
     type->kind = TY_VOID;
