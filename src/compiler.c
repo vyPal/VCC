@@ -18,7 +18,15 @@ const char *const reg_names_8[] = {"al",   "bl",   "cl",   "dl",   "sil",
                                    "dil",  "r8b",  "r9b",  "r10b", "r11b",
                                    "r12b", "r13b", "r14b", "r15b"};
 
-const int arg_regs[] = {REG_RDI, REG_RSI, REG_RDX, REG_RCX, REG_R8, REG_R9};
+#define N_ARG_REGISTERS 6
+const int arg_regs[N_ARG_REGISTERS] = {REG_RDI, REG_RSI, REG_RDX,
+                                       REG_RCX, REG_R8,  REG_R9};
+
+// Registers that should be preserved across function calls (according to
+// https://stackoverflow.com/a/18024743)
+#define N_PRESERVED_REGS 5
+const int preserved_regs[N_PRESERVED_REGS] = {REG_RBX, REG_R12, REG_R13,
+                                              REG_R14, REG_R15};
 
 // Appends null-terminated string to generated assembly
 int append(compiler_state *state, char *text) {
@@ -34,6 +42,25 @@ int append(compiler_state *state, char *text) {
   }
   state->generated = new;
   memcpy(state->generated + state->output_len, text, len);
+  state->output_len += len;
+  return len;
+}
+
+int append_at(compiler_state *state, char *text, int location) {
+  int len = strlen(text);
+
+  char *new =
+      realloc(state->generated, sizeof(char) * (state->output_len + len));
+  if (new == NULL) {
+    if (state->generated != NULL)
+      free(state->generated);
+    printf("Failed to reallocate space for generated assembly\n");
+    return -1;
+  }
+  state->generated = new;
+  memmove(state->generated + location + len, state->generated + location,
+          state->output_len - location);
+  memcpy(state->generated + location, text, len);
   state->output_len += len;
   return len;
 }
@@ -251,6 +278,9 @@ int emit_function_prologue(compiler_state *state, function *f) {
   }
   state->valc = f->next_value_id;
 
+  for (int i = 0; i < REG_COUNT; i++)
+    state->reg_used[i] = state->was_modified[i] = 0;
+
   int offset = 0;
   int size = 0;
   for (int i = 0; i < f->argc; i++) {
@@ -312,6 +342,8 @@ int emit_function_prologue(compiler_state *state, function *f) {
     }
     free(buf);
 
+    state->fprologue_end = state->output_len;
+
     if (b.label == NULL) {
       for (int j = 0; j < f->argc; j++) {
         location *loc = &state->value_loc[j];
@@ -328,7 +360,7 @@ int emit_function_prologue(compiler_state *state, function *f) {
 int alloc_reg(compiler_state *state) {
   for (int i = 0; i < REG_COUNT; i++)
     if (state->reg_used[i] == 0) {
-      state->reg_used[i] = 1;
+      state->reg_used[i] = state->was_modified[i] = 1;
       return i;
     }
   printf("Failed to find free register\n");
@@ -411,6 +443,8 @@ int ensure_in_reg(compiler_state *state, value_id id, int reg) {
   location *loc = &state->value_loc[id];
   int width = state->slots[id].size;
 
+  state->was_modified[reg] = 1;
+
   if (loc->kind == LOC_REG && loc->reg.id == reg)
     return 0;
   if (loc->kind == LOC_NONE) {
@@ -436,6 +470,7 @@ int ensure_in_reg(compiler_state *state, value_id id, int reg) {
       return ret;
     ret = append(state, buf);
     free(buf);
+    free_reg(state, loc->reg.id);
   } else if (loc->kind == LOC_IMM) {
     ret = asprintf(&buf, "\tmov %s, %ld\n", get_width(reg, width),
                    loc->immediate);
@@ -555,7 +590,7 @@ int lower_instruction(compiler_state *state, instruction i) {
       ret = append(state, "\tCWD\n");
     if (ret < 0)
       return ret;
-    state->reg_used[REG_RDX] = 1;
+    state->reg_used[REG_RDX] = state->was_modified[REG_RDX] = 1;
     tmp_reg = ensure_reg(state, i.binop.rhs);
 
     ret = asprintf(&buf, "\tidiv %s\n", get_width(tmp_reg, width));
@@ -588,7 +623,7 @@ int lower_instruction(compiler_state *state, instruction i) {
       ret = append(state, "\tCWD\n");
     if (ret < 0)
       return ret;
-    state->reg_used[REG_RDX] = 1;
+    state->reg_used[REG_RDX] = state->was_modified[REG_RDX] = 1;
     tmp_reg = ensure_reg(state, i.binop.rhs);
 
     ret = asprintf(&buf, "\tidiv %s\n", get_width(tmp_reg, width));
@@ -664,6 +699,25 @@ int lower_instruction(compiler_state *state, instruction i) {
         return ret;
     }
 
+    // Spill caller saved registers
+    for (int i = 0; i < REG_COUNT; i++) {
+      if (state->reg_used[i]) {
+        int needs_spilling = 1;
+        for (int j = 0; j < N_PRESERVED_REGS; j++)
+          if (preserved_regs[j] == i)
+            needs_spilling = 0;
+        if (!needs_spilling)
+          continue;
+        for (int j = 0; j < N_ARG_REGISTERS; j++)
+          if (arg_regs[j] == i)
+            needs_spilling = 0;
+        if (needs_spilling)
+          ret = spill_register(state, i);
+        if (ret < 0)
+          return ret;
+      }
+    }
+
     // TODO: Once pushing is implemented, handle stack alignment
     ret = asprintf(&buf, "\tcall %s\n", i.call.func);
     if (ret < 0)
@@ -697,6 +751,34 @@ int lower_instruction(compiler_state *state, instruction i) {
           return ret;
       }
     }
+
+    int to_preserve = 0;
+    for (int i = 0; i < N_PRESERVED_REGS; i++) {
+      if (state->was_modified[preserved_regs[i]]) {
+        if (to_preserve == 0) {
+          ret = append(state, "\n");
+          if (ret < 0)
+            return ret;
+          ret = append_at(state, "\n", state->fprologue_end);
+          to_preserve++;
+        }
+        ret = asprintf(&buf, "\tpush %s\n", reg_names_64[preserved_regs[i]]);
+        if (ret < 0)
+          return ret;
+        ret = append_at(state, buf, state->fprologue_end);
+        free(buf);
+        if (ret < 0)
+          return ret;
+        ret = asprintf(&buf, "\tpop %s\n", reg_names_64[preserved_regs[i]]);
+        if (ret < 0)
+          return ret;
+        ret = append(state, buf);
+        free(buf);
+        if (ret < 0)
+          return ret;
+      }
+    }
+
     ret = append(state, "\n\tmov rsp, rbp\n\tpop rbp\n\tret\n\n");
     break;
   }

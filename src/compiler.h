@@ -53,6 +53,12 @@ enum {
   REG_RDI,
   REG_R8,
   REG_R9,
+  REG_R10,
+  REG_R11,
+  REG_R12,
+  REG_R13,
+  REG_R14,
+  REG_R15,
   REG_COUNT
 };
 
@@ -63,7 +69,11 @@ typedef struct {
   stack_slot *slots;
   location *value_loc;
   int reg_used[REG_COUNT];
+  int was_modified[REG_COUNT];
   module *mod;
+
+  // To write register preservation if needed
+  int fprologue_end;
   // variable_map *varmap;
   // int varmapc;
 } compiler_state;
