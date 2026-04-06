@@ -243,6 +243,19 @@ void print_inst(instruction i) {
         printf(", ");
     }
     printf(")\n");
+    break;
+  case IR_NOT:
+    printf("\t%%%d = not %%%d\n", i.dst, i.value);
+    break;
+  case IR_ADDR:
+    printf("\t%%%d = ptr %%%d\n", i.dst, i.value);
+    break;
+  case IR_LOAD_ADDR:
+    printf("\t%%%d = load:ptr %%%d\n", i.dst, i.value);
+    break;
+  case IR_STORE_ADDR:
+    printf("\t%%%d = store:ptr %%%d\n", i.dst, i.value);
+    break;
   }
 }
 
@@ -328,10 +341,14 @@ int recalculate_ids(function *f) {
       case IR_SDIV:
       case IR_SREM:
       case IR_STORE:
+      case IR_STORE_ADDR:
         i->binop.lhs = mapto[i->binop.lhs];
         i->binop.rhs = mapto[i->binop.rhs];
         break;
       case IR_LOAD:
+      case IR_NOT:
+      case IR_ADDR:
+      case IR_LOAD_ADDR:
         i->value = mapto[i->value];
         break;
       case IR_CALL:
@@ -342,7 +359,8 @@ int recalculate_ids(function *f) {
         if (i->optional.present)
           i->optional.value = mapto[i->optional.value];
         break;
-      default:
+      case IR_CONST:
+      case IR_ALLOCA:
         break;
       }
     }

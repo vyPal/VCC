@@ -29,7 +29,11 @@ typedef enum {
   IR_STORE,
   IR_LOAD,
   IR_CALL,
-  IR_RET
+  IR_RET,
+  IR_NOT,
+  IR_ADDR,
+  IR_LOAD_ADDR,
+  IR_STORE_ADDR
 } opcode;
 
 // Container for instruction

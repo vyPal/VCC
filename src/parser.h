@@ -11,6 +11,7 @@ typedef enum {
   VARIABLE,
   ASSIGNMENT,
   BINARY_OP,
+  UNARY_OP,
   RETURN,
   LEAF,
   CALL,
@@ -56,6 +57,11 @@ typedef struct {
   token_slice op;
 } ast_node_binary_op;
 
+typedef struct {
+  ast_node *val;
+  token_slice op;
+} ast_node_unary_op;
+
 typedef ast_node *ast_node_return; // Pointer to optional return value
 typedef token_slice ast_node_leaf;
 
@@ -89,6 +95,7 @@ int determine_kind(char *text, int *len);
 int parse_type(parser_state *state, parsed_type *out);
 
 ast_node *parse_primary(parser_state *state);
+ast_node *parse_unary(parser_state *state);
 ast_node *parse_addsub(parser_state *state);
 ast_node *parse_muldiv(parser_state *state);
 ast_node *parse_statement(parser_state *state, ast_node_function *parent_func);

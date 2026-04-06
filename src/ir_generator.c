@@ -377,6 +377,84 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     }
     *ret = i->dst;
     break;
+  case UNARY_OP:;
+    ast_node_unary_op *uop = (ast_node_unary_op *)node->node;
+
+    if (strncmp("!", uop->op.ptr, uop->op.len) == 0) {
+      if (generate_node(state, uop->val, 1, &val, &rtyp) < 0) {
+        return -1;
+      }
+      i = new_instruction(state->current_func, state->current_block);
+      if (i == NULL) {
+        return -1;
+      }
+      i->value = val;
+      i->op = IR_NOT;
+      i->ret = rtyp;
+    } else if (strncmp("*", uop->op.ptr, uop->op.len) == 0) {
+      if (generate_node(state, uop->val, 1, &val, &rtyp) < 0) {
+        return -1;
+      }
+      i = new_instruction(state->current_func, state->current_block);
+      if (i == NULL) {
+        return -1;
+      }
+      i->value = val;
+      i->op = IR_LOAD_ADDR;
+      if (rtyp.kind != TY_PTR) {
+        printf("Unable to dereference non-pointer type\n");
+        return -1;
+      }
+      i->ret = *rtyp.base;
+    } else if (strncmp("&", uop->op.ptr, uop->op.len) == 0) {
+      i = new_instruction(state->current_func, state->current_block);
+      if (i == NULL) {
+        return -1;
+      }
+      i->op = IR_ADDR;
+
+      if (uop->val->type != LEAF) {
+        printf("Unable to take reference to non-leaf\n");
+        return -1;
+      }
+      ast_node_leaf *l = (ast_node_leaf *)uop->val->node;
+      char *leaf = malloc(sizeof(char) * (l->len + 1));
+      if (leaf == NULL) {
+        return -1;
+      }
+      memcpy(leaf, l->ptr, l->len);
+      leaf[l->len] = 0;
+
+      symbol *lsym = find_value(state, leaf);
+      if (lsym == NULL) {
+        printf("Unable to find variable\n");
+        return -1;
+      } else {
+        if (lsym->kind == SYM_STACK) {
+          i->value = lsym->id;
+        } else {
+          printf("Unable to take reference to value not on stack\n");
+          return -1;
+        }
+        rtyp = lsym->type;
+      }
+      free(leaf);
+
+      type_def *type = malloc(sizeof(type_def));
+      if (type == NULL) {
+        printf("Unable to allocate memory for subtype\n");
+        return -1;
+      }
+      *type = rtyp;
+      i->ret = pointer_to(type);
+    } else {
+      printf("Unknown unary operator\n");
+      return -1;
+    }
+
+    *typ = i->ret;
+    *ret = i->dst;
+    break;
   case RETURN:;
     if (node->node == NULL) {
       i = new_instruction(state->current_func, state->current_block);

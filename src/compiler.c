@@ -94,10 +94,14 @@ int dead_value_elim(function *func) {
       case IR_SDIV:
       case IR_SREM:
       case IR_STORE:
+      case IR_STORE_ADDR:
         uses[i.binop.lhs]++;
         uses[i.binop.rhs]++;
         break;
       case IR_LOAD:
+      case IR_NOT:
+      case IR_ADDR:
+      case IR_LOAD_ADDR:
         uses[i.value]++;
         break;
       case IR_CALL:
@@ -108,7 +112,8 @@ int dead_value_elim(function *func) {
         if (i.optional.present)
           uses[i.optional.value]++;
         break;
-      default:
+      case IR_CONST:
+      case IR_ALLOCA:
         break;
       }
     }
@@ -139,11 +144,15 @@ void remove_dependant(function *func, value_id dep) {
       case IR_SDIV:
       case IR_SREM:
       case IR_STORE:
+      case IR_STORE_ADDR:
         if (i.binop.lhs == dep || i.binop.rhs == dep)
           is_dependant = 1;
 
         break;
       case IR_LOAD:
+      case IR_NOT:
+      case IR_ADDR:
+      case IR_LOAD_ADDR:
         if (i.value == dep)
           is_dependant = 1;
         break;
@@ -157,7 +166,8 @@ void remove_dependant(function *func, value_id dep) {
           if (i.optional.value == dep)
             is_dependant = 1;
         break;
-      default:
+      case IR_CONST:
+      case IR_ALLOCA:
         break;
       }
 
@@ -187,6 +197,11 @@ int dead_store_elim(function *func) {
         break;
       case IR_LOAD:
         info[i.value].loads++;
+        break;
+      case IR_ADDR:
+        // BUG: Treats a reference as if it was used by default
+        info[i.value].loads++;
+        info[i.value].stores++;
         break;
       default:
         break;
@@ -397,45 +412,50 @@ int spill_register(compiler_state *state, int reg) {
 }
 
 int ensure_reg(compiler_state *state, value_id id) {
-  location loc = state->value_loc[id];
+  location *loc = &state->value_loc[id];
   int width = state->slots[id].size;
   int tmp_reg;
-  if (loc.kind == LOC_NONE) {
+  if (loc->kind == LOC_NONE) {
     printf(
         "PANIC: Value with id %%%d has not been stored yet but is trying to be "
         "accessed (shouldn't be possible, probably an issue with your IR)!\n",
         id);
     return -1;
-  } else if (loc.kind == LOC_IMM) {
+  } else if (loc->kind == LOC_IMM) {
     tmp_reg = alloc_reg(state);
     if (tmp_reg < 0)
       return tmp_reg;
     char *buf;
     int ret = asprintf(&buf, "\tmov %s, %ld\n", get_width(tmp_reg, width),
-                       loc.immediate);
+                       loc->immediate);
     if (ret < 0)
       return ret;
     ret = append(state, buf);
     free(buf);
     if (ret < 0)
       return ret;
-  } else if (loc.kind == LOC_STACK) {
+  } else if (loc->kind == LOC_STACK) {
     tmp_reg = alloc_reg(state);
     if (tmp_reg < 0)
       return tmp_reg;
     char *buf;
     int ret =
         asprintf(&buf, "\tmov %s, %s [rbp-%d]\n", get_width(tmp_reg, width),
-                 width_specifier(width), loc.stack);
+                 width_specifier(width), loc->stack);
     if (ret < 0)
       return ret;
     ret = append(state, buf);
     free(buf);
     if (ret < 0)
       return ret;
-  } else if (loc.kind == LOC_REG) {
-    tmp_reg = loc.reg.id;
+  } else if (loc->kind == LOC_REG) {
+    tmp_reg = loc->reg.id;
   }
+
+  loc->kind = LOC_REG;
+  loc->reg.id = tmp_reg;
+  loc->reg.width = width;
+
   return tmp_reg;
 }
 
@@ -489,6 +509,7 @@ int ensure_in_reg(compiler_state *state, value_id id, int reg) {
 
   loc->kind = LOC_REG;
   loc->reg.id = reg;
+  loc->reg.width = width;
 
   state->reg_used[reg] = 1;
 
@@ -700,19 +721,19 @@ int lower_instruction(compiler_state *state, instruction i) {
     }
 
     // Spill caller saved registers
-    for (int i = 0; i < REG_COUNT; i++) {
-      if (state->reg_used[i]) {
+    for (int j = 0; j < REG_COUNT; j++) {
+      if (state->reg_used[j]) {
         int needs_spilling = 1;
-        for (int j = 0; j < N_PRESERVED_REGS; j++)
-          if (preserved_regs[j] == i)
+        for (int k = 0; k < N_PRESERVED_REGS; k++)
+          if (preserved_regs[k] == j)
             needs_spilling = 0;
         if (!needs_spilling)
           continue;
-        for (int j = 0; j < N_ARG_REGISTERS; j++)
-          if (arg_regs[j] == i)
+        for (int k = 0; k < N_ARG_REGISTERS && k < i.call.argc; k++)
+          if (arg_regs[k] == j)
             needs_spilling = 0;
         if (needs_spilling)
-          ret = spill_register(state, i);
+          ret = spill_register(state, j);
         if (ret < 0)
           return ret;
       }
@@ -726,6 +747,10 @@ int lower_instruction(compiler_state *state, instruction i) {
     free(buf);
     if (ret < 0)
       return ret;
+
+    for (int j = 0; j < i.call.argc; j++) {
+      free_reg(state, arg_regs[j]);
+    }
 
     // TODO: Clear stack of extra args
 
@@ -780,6 +805,101 @@ int lower_instruction(compiler_state *state, instruction i) {
     }
 
     ret = append(state, "\n\tmov rsp, rbp\n\tpop rbp\n\tret\n\n");
+    break;
+  case IR_NOT:
+    tmp_reg = ensure_reg(state, i.value);
+    if (tmp_reg < 0)
+      return tmp_reg;
+
+    width = state->slots[i.value].size;
+
+    ret = asprintf(&buf, "\tcmp %s, 0\n\tsete al\n", get_width(tmp_reg, width));
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    if (width > 1) {
+      ret = asprintf(&buf, "\tmovzx %s, al\n", get_width(tmp_reg, width));
+      if (ret < 0)
+        return ret;
+      ret = append(state, buf);
+      free(buf);
+      if (ret < 0)
+        return ret;
+    }
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = state->slots[i.value].size;
+    break;
+  case IR_ADDR:
+    tmp_reg = alloc_reg(state);
+    if (tmp_reg < 0)
+      return tmp_reg;
+    ret = asprintf(&buf, "\tlea %s, [rbp-%d]\n", reg_names_64[tmp_reg],
+                   state->slots[i.value].offset);
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = 8;
+    break;
+  case IR_STORE_ADDR:
+    loc = &state->value_loc[i.binop.rhs];
+    width = state->slots[i.binop.rhs].size;
+    tmp_reg_2 = ensure_reg(state, i.binop.lhs);
+    if (loc->kind == LOC_IMM) {
+      ret = asprintf(&buf, "\tmov %s [%s], %ld\n", width_specifier(width),
+                     reg_names_64[tmp_reg_2], loc->immediate);
+      if (ret < 0)
+        return ret;
+      ret = append(state, buf);
+      free(buf);
+      if (ret < 0)
+        return ret;
+    } else {
+      tmp_reg = ensure_reg(state, i.binop.rhs);
+      if (tmp_reg < 0)
+        return tmp_reg;
+      ret = asprintf(&buf, "\tmov %s [%s], %s\n", width_specifier(width),
+                     reg_names_64[tmp_reg_2], get_width(tmp_reg, width));
+      if (ret < 0)
+        return ret;
+      ret = append(state, buf);
+      free(buf);
+      if (ret < 0)
+        return ret;
+      free_reg(state, tmp_reg);
+    }
+    free_reg(state, tmp_reg_2);
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_STACK;
+    loc->stack = state->slots[i.dst].offset;
+    break;
+  case IR_LOAD_ADDR:
+    tmp_reg = ensure_reg(state, i.value);
+    if (tmp_reg < 0)
+      return tmp_reg;
+    width = _sizeof(i.ret);
+    ret = asprintf(&buf, "\tmov %s, %s [%s]\n", get_width(tmp_reg, width),
+                   width_specifier(width), reg_names_64[tmp_reg]);
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = state->slots[i.value].size;
     break;
   }
   return ret;

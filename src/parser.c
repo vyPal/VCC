@@ -36,7 +36,8 @@ int determine_kind(char *text, int *len) {
     while (*(++text) >= '0' && *text <= '9')
       (*len)++;
     return 2;
-  } else if (*text == '+' || *text == '*' || *text == '/' || *text == '%') {
+  } else if (*text == '+' || *text == '*' || *text == '/' || *text == '%' ||
+             *text == '&' || *text == '!') {
     (*len)++;
     return 3;
 
@@ -74,7 +75,8 @@ int is_type(char *in, int len) {
     return -1;
   int type = -1;
   for (int i = 0; i < N_BUILTIN_TYPES; i++) {
-    if (strncmp(in, builtin_types[i], len) == 0) {
+    if ((int)strlen(builtin_types[i]) == len &&
+        strncmp(in, builtin_types[i], len) == 0) {
       type = i;
       break;
     }
@@ -168,7 +170,7 @@ ast_node *parse_primary(parser_state *s) {
     advance(s); // (
     call->argc = 0;
     call->args = NULL;
-    while (s->current_kind == 1 || s->current_kind == 2) {
+    while (s->current_kind != 4 && s->current_kind != 5) {
       call->argc++;
 
       ast_node **args = realloc(call->args, sizeof(ast_node *) * call->argc);
@@ -193,7 +195,7 @@ ast_node *parse_primary(parser_state *s) {
       free(call->args);
       free(call);
       free(node);
-      printf("Expected end of arguments list (`)`), found %.*s\n",
+      printf("Expected end of call's arguments list (`)`), found %.*s\n",
              s->current_len, s->src);
       return NULL;
     }
@@ -224,8 +226,45 @@ ast_node *parse_primary(parser_state *s) {
   }
 }
 
+ast_node *parse_unary(parser_state *s) {
+  if (s->current_kind == 3 &&
+      (*s->src == '*' || *s->src == '&' || *s->src == '!')) {
+    ast_node *new = malloc(sizeof(ast_node));
+    if (new == NULL) {
+      printf("Failed to allocate space for operator node\n");
+      return NULL;
+    }
+    new->type = UNARY_OP;
+
+    ast_node_unary_op *op = malloc(sizeof(ast_node_unary_op));
+    if (op == NULL) {
+      free(new);
+      printf("Failed to allocate space for operator node value\n");
+      return NULL;
+    }
+
+    op->op.ptr = s->src;
+    op->op.len = 1;
+    advance(s);
+
+    ast_node *val = parse_primary(s);
+    if (val == NULL) {
+      free(op);
+      free(new);
+      return NULL;
+    }
+
+    op->val = val;
+    new->node = op;
+
+    return new;
+  } else {
+    return parse_primary(s);
+  }
+}
+
 ast_node *parse_muldiv(parser_state *s) {
-  ast_node *left = parse_primary(s);
+  ast_node *left = parse_unary(s);
   if (left == NULL) {
     return NULL;
   }
@@ -252,7 +291,7 @@ ast_node *parse_muldiv(parser_state *s) {
     op->op.len = s->current_len;
     op->left = left;
     advance(s);
-    op->right = parse_primary(s);
+    op->right = parse_unary(s);
     if (op->right == NULL) {
       free_node(new);
       return NULL;
@@ -322,7 +361,9 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
   } else if (parse_type(s, &ty) < 0) {
     if (strncmp("(", s->next_start, 1) == 0) {
       free(node);
-      node = parse_primary(s);
+      node = parse_addsub(s);
+      if (node == NULL)
+        return NULL;
     } else if (strncmp("=", s->next_start, 1) == 0) {
       node->type = ASSIGNMENT;
       ast_node_assignment *assign = malloc(sizeof(ast_node_assignment));
@@ -371,7 +412,8 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
     if (!(s->current_kind == 4 && *s->src == '=')) {
       free(variable);
       free(node);
-      printf("Expected assignment (`=`), found %.*s\n", s->current_len, s->src);
+      printf("Expected assignment to variable (`=`), found %.*s\n",
+             s->current_len, s->src);
       return NULL;
     }
     advance(s); // =
@@ -534,6 +576,43 @@ ast_node *parse_function(parser_state *s) {
   }
   advance(s); // }
 
+  if (func->nodes == NULL || func->nodes[func->nodec - 1]->type != RETURN) {
+    func->nodec++;
+
+    ast_node **nodes = realloc(func->nodes, sizeof(ast_node *) * func->nodec);
+    if (nodes == NULL) {
+      for (int i = 0; i < func->nodec - 1; i++) {
+        free_node(func->nodes[i]);
+      }
+      if (func->nodes != NULL)
+        free(func->nodes);
+      free(func->arg_names);
+      free(func->arg_types);
+      free(func);
+      free(node);
+      printf("Failed to allocate space for function body\n");
+      return NULL;
+    }
+    func->nodes = nodes;
+    ast_node *ret_node = malloc(sizeof(ast_node));
+    if (ret_node == NULL) {
+      for (int i = 0; i < func->nodec - 1; i++) {
+        free_node(func->nodes[i]);
+      }
+      if (func->nodes != NULL)
+        free(func->nodes);
+      free(func->arg_names);
+      free(func->arg_types);
+      free(func);
+      free(node);
+      printf("Failed to allocate space for return node\n");
+      return NULL;
+    }
+    ret_node->type = RETURN;
+    ret_node->node = NULL;
+    func->nodes[func->nodec - 1] = ret_node;
+  }
+
   node->node = func;
   return node;
 }
@@ -608,6 +687,11 @@ void free_node(ast_node *node) {
     free_node(b->right);
     free(b);
     break;
+  case UNARY_OP:;
+    ast_node_unary_op *u = (ast_node_unary_op *)node->node;
+    free_node(u->val);
+    free(u);
+    break;
   case RETURN:
     free_node((ast_node *)node->node);
     break;
@@ -679,6 +763,13 @@ void traverse_tree(ast_node *node, int level) {
     printf("%*s", level * 2, "");
     printf("%.*s\n", b->op.len, b->op.ptr);
     traverse_tree(b->right, level + 1);
+    break;
+  case UNARY_OP:;
+    ast_node_unary_op *u = (ast_node_unary_op *)node->node;
+    printf("Unary Op:\n");
+    printf("%*s", level * 2, "");
+    printf("%.*s\n", u->op.len, u->op.ptr);
+    traverse_tree(u->val, level + 1);
     break;
   case RETURN:
     printf("Return");
