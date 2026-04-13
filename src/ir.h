@@ -167,6 +167,9 @@ instruction *new_instruction(function *f, block *b);
 // Creates a new pointer type
 type_def pointer_to(type_def *base);
 
+// Clones a type by creating a deep copy of it
+type_def clone_type(type_def orig);
+
 // Cleans up all memory owned by module
 void clean_module(module *mod);
 

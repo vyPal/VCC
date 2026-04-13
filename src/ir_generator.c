@@ -356,7 +356,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
     if (i == NULL) {
       return -1;
     }
-    i->ret = rtyp;
+    i->ret = clone_type(rtyp);
     *typ = i->ret;
     i->binop.lhs = val;
     i->binop.rhs = rhs;
@@ -390,7 +390,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       }
       i->value = val;
       i->op = IR_NOT;
-      i->ret = rtyp;
+      i->ret = clone_type(rtyp);
     } else if (strncmp("*", uop->op.ptr, uop->op.len) == 0) {
       if (generate_node(state, uop->val, 1, &val, &rtyp) < 0) {
         return -1;
@@ -405,7 +405,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
         printf("Unable to dereference non-pointer type\n");
         return -1;
       }
-      i->ret = *rtyp.base;
+      i->ret = clone_type(*rtyp.base);
     } else if (strncmp("&", uop->op.ptr, uop->op.len) == 0) {
       i = new_instruction(state->current_func, state->current_block);
       if (i == NULL) {
@@ -445,7 +445,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
         printf("Unable to allocate memory for subtype\n");
         return -1;
       }
-      *type = rtyp;
+      *type = clone_type(rtyp);
       i->ret = pointer_to(type);
     } else {
       printf("Unknown unary operator\n");
@@ -498,7 +498,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       char *end;
       long constant = strtol(leaf, &end, 10);
       i->op = IR_CONST;
-      i->ret = state->requested_type;
+      i->ret = clone_type(state->requested_type);
       i->constant = constant;
       *typ = i->ret;
       *ret = i->dst;
@@ -553,7 +553,7 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       return -1;
     }
     i->op = IR_CALL;
-    i->ret = def->ret_type;
+    i->ret = clone_type(def->ret_type);
     *typ = i->ret;
     i->call.argc = def->argc;
     i->call.args = args;

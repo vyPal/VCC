@@ -125,6 +125,20 @@ type_def pointer_to(type_def *base) {
   return t;
 }
 
+type_def clone_type(type_def orig) {
+  type_def t = {0};
+  t.kind = orig.kind;
+  if (t.kind == TY_PTR) {
+    t.base = malloc(sizeof(type_def));
+    if (t.base == NULL) {
+      printf("PANIC: OOM\n");
+      exit(1);
+    }
+    *t.base = clone_type(*orig.base);
+  }
+  return t;
+}
+
 void clean_module(module *mod) {
   for (int i = 0; i < mod->function_count; i++) {
     function f = mod->functions[i];
