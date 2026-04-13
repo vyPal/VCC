@@ -37,13 +37,17 @@ int determine_kind(char *text, int *len) {
       (*len)++;
     return 2;
   } else if (*text == '+' || *text == '*' || *text == '/' || *text == '%' ||
-             *text == '&' || *text == '!') {
+             *text == '&' || *text == '!' || *text == '<' || *text == '>') {
     (*len)++;
+    if (*(text + 1) == '=')
+      (*len)++;
     return 3;
 
   } else if (*text == '(' || *text == ')' || *text == '{' || *text == '}' ||
              *text == ';' || *text == '=' || *text == ',') {
     (*len)++;
+    if (*(text + 1) == '=')
+      (*len)++;
     return 4;
   } else
     return 5;
@@ -291,7 +295,7 @@ ast_node *parse_muldiv(parser_state *s) {
     op->op.len = s->current_len;
     op->left = left;
     advance(s);
-    op->right = parse_unary(s);
+    op->right = parse_muldiv(s);
     if (op->right == NULL) {
       free_node(new);
       return NULL;
@@ -330,7 +334,48 @@ ast_node *parse_addsub(parser_state *s) {
     op->op.len = s->current_len;
     op->left = left;
     advance(s);
-    op->right = parse_muldiv(s);
+    op->right = parse_addsub(s);
+    if (op->right == NULL) {
+      free_node(new);
+      return NULL;
+    }
+    new->node = op;
+    left = new;
+  }
+
+  return left;
+}
+
+ast_node *parse_cmp(parser_state *s) {
+  ast_node *left = parse_addsub(s);
+  if (left == NULL) {
+    return NULL;
+  }
+
+  while ((s->current_kind == 3 && ((*s->src == '!' && *(s->src + 1) == '=') ||
+                                   *s->src == '<' || *s->src == '>')) ||
+         (*s->src == '=' && *(s->src + 1) == '=')) {
+    ast_node *new = malloc(sizeof(ast_node));
+    if (new == NULL) {
+      free_node(left);
+      printf("Failed to allocate space for operator node\n");
+      return NULL;
+    }
+    new->type = BINARY_OP;
+
+    ast_node_binary_op *op = malloc(sizeof(ast_node_binary_op));
+    if (op == NULL) {
+      free_node(left);
+      free(new);
+      printf("Failed to allocate space for operator node value\n");
+      return NULL;
+    }
+
+    op->op.ptr = s->src;
+    op->op.len = s->current_len;
+    op->left = left;
+    advance(s);
+    op->right = parse_cmp(s);
     if (op->right == NULL) {
       free_node(new);
       return NULL;
@@ -356,12 +401,12 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
     if (s->current_kind == 4) {
       node->node = NULL;
     } else {
-      node->node = parse_addsub(s);
+      node->node = parse_cmp(s);
     }
   } else if (parse_type(s, &ty) < 0) {
     if (strncmp("(", s->next_start, 1) == 0) {
       free(node);
-      node = parse_addsub(s);
+      node = parse_cmp(s);
       if (node == NULL)
         return NULL;
     } else if (strncmp("=", s->next_start, 1) == 0) {
@@ -383,7 +428,7 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
         return NULL;
       }
       advance(s); // =
-      assign->value = parse_addsub(s);
+      assign->value = parse_cmp(s);
       node->node = assign;
       if (assign->value == NULL) {
         free_node(node);
@@ -418,7 +463,7 @@ ast_node *parse_statement(parser_state *s, ast_node_function *parent_func) {
     }
     advance(s); // =
     if (s->current_kind != 4) {
-      variable->initializer = parse_addsub(s);
+      variable->initializer = parse_cmp(s);
     }
     node->node = variable;
   }

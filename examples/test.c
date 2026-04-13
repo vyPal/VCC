@@ -8,5 +8,5 @@ int main() {
   int c = sub(a, 4);
   int *d = &c;
   c = takes_nested_pointer(&d);
-  return c;
+  return c == 3;
 }

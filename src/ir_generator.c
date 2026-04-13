@@ -371,6 +371,18 @@ int generate_node(generator_state *state, ast_node *node, int in_function,
       i->op = IR_SDIV;
     } else if (strncmp("%", op->op.ptr, op->op.len) == 0) {
       i->op = IR_SREM;
+    } else if (strncmp("==", op->op.ptr, 2) == 0) {
+      i->op = IR_EQ;
+    } else if (strncmp("!=", op->op.ptr, 2) == 0) {
+      i->op = IR_NE;
+    } else if (strncmp(">=", op->op.ptr, 2) == 0) {
+      i->op = IR_GE;
+    } else if (strncmp("<=", op->op.ptr, 2) == 0) {
+      i->op = IR_LE;
+    } else if (strncmp(">", op->op.ptr, 1) == 0) {
+      i->op = IR_GT;
+    } else if (strncmp("<", op->op.ptr, 2) == 0) {
+      i->op = IR_LT;
     } else {
       printf("Unknown operator\n");
       return -1;
