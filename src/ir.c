@@ -270,6 +270,31 @@ void print_inst(instruction i) {
   case IR_STORE_ADDR:
     printf("\t%%%d = store:ptr %%%d\n", i.dst, i.value);
     break;
+  case IR_EQ:
+    printf("\t%%%d = cmp:eq %%%d, %%%d\n", i.dst, i.binop.lhs, i.binop.rhs);
+    break;
+  case IR_NE:
+    printf("\t%%%d = cmp:ne %%%d, %%%d\n", i.dst, i.binop.lhs, i.binop.rhs);
+    break;
+  case IR_LT:
+    printf("\t%%%d = cmp:lt %%%d, %%%d\n", i.dst, i.binop.lhs, i.binop.rhs);
+    break;
+  case IR_GT:
+    printf("\t%%%d = cmp:gt %%%d, %%%d\n", i.dst, i.binop.lhs, i.binop.rhs);
+    break;
+  case IR_LE:
+    printf("\t%%%d = cmp:le %%%d, %%%d\n", i.dst, i.binop.lhs, i.binop.rhs);
+    break;
+  case IR_GE:
+    printf("\t%%%d = cmp:ge %%%d, %%%d\n", i.dst, i.binop.lhs, i.binop.rhs);
+    break;
+  case IR_BRANCH:
+    printf("\t%%%d = branch %%%d 1@%s 0@%s\n", i.dst, i.branch.cond,
+           i.branch.ltrue, i.branch.lfalse);
+    break;
+  case IR_JMP:
+    printf("\t%%%d = jmp @%s\n", i.dst, i.label);
+    break;
   }
 }
 
@@ -356,6 +381,12 @@ int recalculate_ids(function *f) {
       case IR_SREM:
       case IR_STORE:
       case IR_STORE_ADDR:
+      case IR_EQ:
+      case IR_NE:
+      case IR_LT:
+      case IR_GT:
+      case IR_LE:
+      case IR_GE:
         i->binop.lhs = mapto[i->binop.lhs];
         i->binop.rhs = mapto[i->binop.rhs];
         break;
@@ -375,7 +406,10 @@ int recalculate_ids(function *f) {
         break;
       case IR_CONST:
       case IR_ALLOCA:
+      case IR_JMP:
         break;
+      case IR_BRANCH:
+        i->branch.cond = mapto[i->branch.cond];
       }
     }
   }

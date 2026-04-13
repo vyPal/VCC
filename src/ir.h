@@ -33,7 +33,15 @@ typedef enum {
   IR_NOT,
   IR_ADDR,
   IR_LOAD_ADDR,
-  IR_STORE_ADDR
+  IR_STORE_ADDR,
+  IR_EQ,
+  IR_NE,
+  IR_LT,
+  IR_GT,
+  IR_LE,
+  IR_GE,
+  IR_BRANCH,
+  IR_JMP
 } opcode;
 
 // Container for instruction
@@ -46,8 +54,13 @@ typedef struct {
     struct {
       value_id lhs, rhs; // Or dst, src in this order
     } binop;
+    struct {
+      value_id cond;
+      char *ltrue, *lfalse;
+    } branch;
     long constant;
     value_id value;
+    char *label;
     struct {
       value_id value;
       int present;

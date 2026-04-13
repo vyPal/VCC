@@ -4,6 +4,8 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
+#include <stddef.h>
+#include <stdint.h>
 
 const char *const reg_names_64[] = {"rax", "rbx", "rcx", "rdx", "rsi",
                                     "rdi", "r8",  "r9",  "r10", "r11",
@@ -95,6 +97,12 @@ int dead_value_elim(function *func) {
       case IR_SREM:
       case IR_STORE:
       case IR_STORE_ADDR:
+      case IR_EQ:
+      case IR_NE:
+      case IR_LT:
+      case IR_GT:
+      case IR_LE:
+      case IR_GE:
         uses[i.binop.lhs]++;
         uses[i.binop.rhs]++;
         break;
@@ -114,7 +122,10 @@ int dead_value_elim(function *func) {
         break;
       case IR_CONST:
       case IR_ALLOCA:
+      case IR_JMP:
         break;
+      case IR_BRANCH:
+        uses[i.branch.cond]++;
       }
     }
   }
@@ -145,6 +156,12 @@ void remove_dependant(function *func, value_id dep) {
       case IR_SREM:
       case IR_STORE:
       case IR_STORE_ADDR:
+      case IR_EQ:
+      case IR_NE:
+      case IR_LT:
+      case IR_GT:
+      case IR_LE:
+      case IR_GE:
         if (i.binop.lhs == dep || i.binop.rhs == dep)
           is_dependant = 1;
 
@@ -168,6 +185,11 @@ void remove_dependant(function *func, value_id dep) {
         break;
       case IR_CONST:
       case IR_ALLOCA:
+      case IR_JMP:
+        break;
+      case IR_BRANCH:
+        if (i.branch.cond == dep)
+          is_dependant = 1;
         break;
       }
 
@@ -218,6 +240,97 @@ int dead_store_elim(function *func) {
 
   recalculate_ids(func);
 
+  return 0;
+}
+
+uint32_t hash_string(const char *s) {
+  uint32_t hash = 0;
+
+  for (; *s; ++s) {
+    hash += *s;
+    hash += (hash << 10);
+    hash ^= (hash >> 6);
+  }
+
+  hash += (hash << 3);
+  hash ^= (hash >> 11);
+  hash += (hash << 15);
+
+  return hash;
+}
+
+int array_contains(uint32_t *arr, size_t len, uint32_t elem) {
+  if (len == 0)
+    return 0;
+  for (; *arr; arr++)
+    if (*arr == elem)
+      return 1;
+  return 0;
+}
+
+int dead_branch_elim(function *func) {
+  uint32_t *labels = NULL;
+  size_t len = 0;
+
+  for (int i = 0; i < func->block_count; i++) {
+    block b = func->blocks[i];
+    for (int j = 0; j < b.instruction_count; j++) {
+      instruction inst = b.instructions[j];
+      switch (inst.op) {
+      case IR_JMP:
+        if (!array_contains(labels, len, hash_string(inst.label))) {
+          len++;
+          uint32_t *new = realloc(labels, sizeof(uint32_t) * len);
+          if (new == NULL) {
+            free(labels);
+            return -1;
+          }
+          labels = new;
+          labels[len - 1] = hash_string(inst.label);
+        }
+        break;
+      case IR_BRANCH:
+        if (!array_contains(labels, len, hash_string(inst.branch.lfalse))) {
+          len++;
+          uint32_t *new = realloc(labels, sizeof(uint32_t) * len);
+          if (new == NULL) {
+            free(labels);
+            return -1;
+          }
+          labels = new;
+          labels[len - 1] = hash_string(inst.branch.lfalse);
+        }
+        if (!array_contains(labels, len, hash_string(inst.branch.ltrue))) {
+          len++;
+          uint32_t *new = realloc(labels, sizeof(uint32_t) * len);
+          if (new == NULL) {
+            free(labels);
+            return -1;
+          }
+          labels = new;
+          labels[len - 1] = hash_string(inst.branch.ltrue);
+        }
+        break;
+      default:
+        break;
+      }
+    }
+  }
+
+  if ((int)(len + 1) != func->block_count) {
+    func->changed = 1;
+    block *new_blocks = malloc(sizeof(block) * (len + 1)); // +1 for entry
+    if (new_blocks == NULL)
+      return -1;
+    int nb_index = 0;
+    for (int i = 0; i < func->block_count; i++) {
+      block b = func->blocks[i];
+      if (b.label == NULL || array_contains(labels, len, hash_string(b.label)))
+        new_blocks[nb_index++] = b;
+    }
+    free(func->blocks);
+    func->blocks = new_blocks;
+  }
   return 0;
 }
 
@@ -901,6 +1014,181 @@ int lower_instruction(compiler_state *state, instruction i) {
     loc->reg.id = tmp_reg;
     loc->reg.width = state->slots[i.value].size;
     break;
+  case IR_EQ:
+    tmp_reg = ensure_reg(state, i.binop.lhs);
+    if (tmp_reg < 0)
+      return tmp_reg;
+    tmp_reg_2 = ensure_reg(state, i.binop.rhs);
+    if (tmp_reg_2 < 0)
+      return tmp_reg_2;
+
+    width = state->slots[i.binop.lhs].size;
+
+    ret = asprintf(&buf, "\tcmp %s, %s\n\tsete %s\n", get_width(tmp_reg, width),
+                   get_width(tmp_reg_2, width), get_width(tmp_reg, 1));
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = 1;
+    free_reg(state, tmp_reg_2);
+    break;
+  case IR_NE:
+    tmp_reg = ensure_reg(state, i.binop.lhs);
+    if (tmp_reg < 0)
+      return tmp_reg;
+    tmp_reg_2 = ensure_reg(state, i.binop.rhs);
+    if (tmp_reg_2 < 0)
+      return tmp_reg_2;
+
+    width = state->slots[i.binop.lhs].size;
+
+    ret =
+        asprintf(&buf, "\tcmp %s, %s\n\tsetne %s\n", get_width(tmp_reg, width),
+                 get_width(tmp_reg_2, width), get_width(tmp_reg, 1));
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = 1;
+    free_reg(state, tmp_reg_2);
+    break;
+  case IR_LT:
+    tmp_reg = ensure_reg(state, i.binop.lhs);
+    if (tmp_reg < 0)
+      return tmp_reg;
+    tmp_reg_2 = ensure_reg(state, i.binop.rhs);
+    if (tmp_reg_2 < 0)
+      return tmp_reg_2;
+
+    width = state->slots[i.binop.lhs].size;
+
+    ret = asprintf(&buf, "\tcmp %s, %s\n\tsetl %s\n", get_width(tmp_reg, width),
+                   get_width(tmp_reg_2, width), get_width(tmp_reg, 1));
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = 1;
+    free_reg(state, tmp_reg_2);
+    break;
+  case IR_GT:
+    tmp_reg = ensure_reg(state, i.binop.lhs);
+    if (tmp_reg < 0)
+      return tmp_reg;
+    tmp_reg_2 = ensure_reg(state, i.binop.rhs);
+    if (tmp_reg_2 < 0)
+      return tmp_reg_2;
+
+    width = state->slots[i.binop.lhs].size;
+
+    ret = asprintf(&buf, "\tcmp %s, %s\n\tsetg %s\n", get_width(tmp_reg, width),
+                   get_width(tmp_reg_2, width), get_width(tmp_reg, 1));
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = 1;
+    free_reg(state, tmp_reg_2);
+    break;
+  case IR_LE:
+    tmp_reg = ensure_reg(state, i.binop.lhs);
+    if (tmp_reg < 0)
+      return tmp_reg;
+    tmp_reg_2 = ensure_reg(state, i.binop.rhs);
+    if (tmp_reg_2 < 0)
+      return tmp_reg_2;
+
+    width = state->slots[i.binop.lhs].size;
+
+    ret =
+        asprintf(&buf, "\tcmp %s, %s\n\tsetle %s\n", get_width(tmp_reg, width),
+                 get_width(tmp_reg_2, width), get_width(tmp_reg, 1));
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = 1;
+    free_reg(state, tmp_reg_2);
+    break;
+  case IR_GE:
+    tmp_reg = ensure_reg(state, i.binop.lhs);
+    if (tmp_reg < 0)
+      return tmp_reg;
+    tmp_reg_2 = ensure_reg(state, i.binop.rhs);
+    if (tmp_reg_2 < 0)
+      return tmp_reg_2;
+
+    width = state->slots[i.binop.lhs].size;
+
+    ret =
+        asprintf(&buf, "\tcmp %s, %s\n\tsetge %s\n", get_width(tmp_reg, width),
+                 get_width(tmp_reg_2, width), get_width(tmp_reg, 1));
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_REG;
+    loc->reg.id = tmp_reg;
+    loc->reg.width = 1;
+    free_reg(state, tmp_reg_2);
+    break;
+  case IR_BRANCH:
+    tmp_reg = ensure_reg(state, i.branch.cond);
+    if (tmp_reg < 0)
+      return tmp_reg;
+
+    ret =
+        asprintf(&buf, "\tjz %s\n\tjmp %s\n", i.branch.lfalse, i.branch.ltrue);
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_NONE;
+    free_reg(state, tmp_reg);
+    break;
+  case IR_JMP:
+    ret = asprintf(&buf, "\tjmp %s\n", i.label);
+    if (ret < 0)
+      return ret;
+    ret = append(state, buf);
+    free(buf);
+    if (ret < 0)
+      return ret;
+    loc = &state->value_loc[i.dst];
+    loc->kind = LOC_NONE;
+    break;
   }
   return ret;
 }
@@ -926,6 +1214,11 @@ int generate_asm(module *mod, char **output) {
         return ret;
       }
       ret = dead_store_elim(f);
+      if (ret < 0) {
+        free(state.generated);
+        return ret;
+      }
+      ret = dead_branch_elim(f);
       if (ret < 0) {
         free(state.generated);
         return ret;
